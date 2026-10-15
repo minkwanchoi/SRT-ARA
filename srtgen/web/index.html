@@ -1,0 +1,2202 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SRT-ARA · SW 신뢰성시험 분석 보고서 자동화 도구</title>
+<style>
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --line: #d9dde3; --line-soft: #e9ecf0;
+  --text: #1c2430; --muted: #5f6b7a; --accent: #1f5a96; --accent-soft: #e6eef7;
+  --warn: #9a6200; --warn-soft: #fdf3dc; --err: #b3261e; --err-soft: #fbe9e7; --ok: #1e7a45;
+  --code-bg: #f7f8fa; --shadow: 0 1px 2px rgba(20, 30, 45, .08);
+  --mono: "D2Coding", Consolas, "Cascadia Mono", "GulimChe", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14181d; --panel: #1c2128; --line: #323a45; --line-soft: #272e37;
+    --text: #e4e8ee; --muted: #9aa6b4; --accent: #7fb2e5; --accent-soft: #223246;
+    --warn: #e6b450; --warn-soft: #3a2f17; --err: #f08a80; --err-soft: #3d201d; --ok: #6fcf97;
+    --code-bg: #171b21; --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.55 "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", system-ui, sans-serif; }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; border: 1px solid var(--line); background: var(--panel); border-radius: 6px;
+  padding: 6px 12px; white-space: nowrap; }
+.item, .item * { white-space: normal; }
+.item .subject, .item .where { white-space: nowrap; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+@media (prefers-color-scheme: dark) { button.primary { color: #10151b; } }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+code, .mono { font-family: var(--mono); font-size: 13px; }
+
+.app { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+header.top { display: flex; align-items: center; gap: 16px; padding: 10px 18px; background: var(--panel);
+  border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+header.top h1 { font-size: 16px; margin: 0; white-space: nowrap; display: flex; flex-direction: column; line-height: 1.2; }
+/* 약어만으로는 무슨 도구인지 알 수 없어 아래에 한글 설명을 작게 둔다(두 줄 구성, 사용자 확정) */
+header.top h1 .brand-sub { font-size: 11.5px; font-weight: 400; color: var(--muted); }
+header.top h1 .brand-ver { font-size: 11.5px; font-weight: 400; color: var(--muted); }
+/* 프로젝트 단추: 지금 연 프로젝트 이름과 보고서 제목 */
+.proj-btn { display: flex; align-items: center; gap: 8px; text-align: left; max-width: 380px; min-width: 0;
+  padding: 4px 10px; }
+.proj-text { display: grid; min-width: 0; }
+.proj-name, .proj-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-name { font-weight: 600; }
+.proj-sub { font-size: 11.5px; color: var(--muted); }
+.proj-sub.unset { color: var(--warn); }
+.proj-sub:empty { display: none; }
+.caret { color: var(--muted); }
+/* 작업 순서 단계 */
+.steps { display: flex; align-items: center; gap: 2px; flex: 1 1 auto; min-width: 0; flex-wrap: wrap; }
+.steps .arrow { color: var(--muted); padding: 0 2px; }
+.step { display: inline-flex; align-items: center; gap: 7px; border-color: transparent; background: transparent;
+  padding: 6px 10px; }
+.step .num { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--line-soft); font-size: 12px; font-weight: 700; }
+.step[aria-current="step"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent);
+  font-weight: 600; }
+.step[aria-current="step"] .num { background: var(--accent); color: var(--panel); }
+.step .badge:empty { display: none; }
+.badge.ok { background: transparent; color: var(--ok); font-weight: 700; }
+/* 펼침 메뉴 */
+.menu-wrap { position: relative; min-width: 0; }
+.menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; min-width: 300px; max-width: 440px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px;
+  box-shadow: 0 6px 20px rgba(20, 30, 45, .16); display: flex; flex-direction: column; }
+.menu[hidden] { display: none; }
+.menu.right { left: auto; right: 0; }
+.menu button { text-align: left; border: 0; background: transparent; padding: 7px 10px; border-radius: 6px;
+  width: 100%; white-space: normal; }
+.menu button:hover:not(:disabled), .menu button:focus-visible { background: var(--line-soft); }
+.menu .meta { display: block; font-size: 11.5px; color: var(--muted); }
+.menu .sep { border-top: 1px solid var(--line-soft); margin: 5px 0; }
+.menu .label { font-size: 11.5px; color: var(--muted); padding: 4px 10px 2px; }
+.menu .cur { font-size: 11.5px; color: var(--muted); padding: 2px 10px 6px; word-break: break-all; }
+/* 3 보고서 만들기 화면 */
+.pane { overflow: auto; padding: 18px 22px 40px; min-width: 0; }
+.pane[hidden], main[hidden] { display: none; }
+.g-run-row { margin: 14px 0 4px; }
+.g-history h3 { font-size: 15px; margin: 0 0 4px; }
+.next-step { margin-top: 14px; display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.badge { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 10px; font-size: 12px;
+  text-align: center; background: var(--line-soft); color: var(--muted); }
+.badge.err { background: var(--err-soft); color: var(--err); }
+.badge.warn { background: var(--warn-soft); color: var(--warn); }
+
+.body { display: grid; grid-template-columns: var(--side-w, 340px) minmax(0, 1fr); min-height: 0; }
+aside { border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column;
+  min-height: 0; position: relative; }
+/* 왼쪽 창 너비 조절 손잡이 (끌기, 화살표 키, 두 번 누르면 처음 너비) */
+.resizer { position: absolute; top: 0; right: -4px; width: 8px; height: 100%; cursor: col-resize; z-index: 5;
+  touch-action: none; }
+.resizer::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent;
+  transition: background .12s; }
+.resizer:hover::after, .resizer:focus-visible::after, .resizer.dragging::after { background: var(--accent); }
+.resizer:focus-visible { outline: none; }
+body.resizing { cursor: col-resize; user-select: none; }
+.filters { padding: 12px; border-bottom: 1px solid var(--line-soft); display: grid; gap: 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { padding: 3px 10px; border-radius: 14px; font-size: 12.5px; }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent);
+  font-weight: 600; }
+input[type="search"], input[type="text"], textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px;
+  padding: 7px 9px; background: var(--panel); }
+textarea { resize: vertical; min-height: 38px; line-height: 1.5; field-sizing: content; }
+.scroll-x { overflow-x: auto; }
+.list { overflow: auto; flex: 1; }
+.group-title { padding: 8px 14px 4px; font-size: 12px; color: var(--muted); font-weight: 600;
+  position: sticky; top: 0; background: var(--panel); }
+.item { display: block; width: 100%; text-align: left; border: 0; border-left: 3px solid transparent;
+  border-radius: 0; padding: 8px 14px 8px 11px; border-bottom: 1px solid var(--line-soft); background: none; }
+.item:hover { background: var(--bg); }
+.item[aria-current="true"] { background: var(--accent-soft); border-left-color: var(--accent); }
+.item .row1 { display: flex; align-items: center; gap: 6px; }
+.item .tag { font-family: var(--mono); font-weight: 600; font-size: 13px; }
+.item .subject { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .where { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-left: auto; flex: none; }
+.empty { padding: 28px 16px; color: var(--muted); text-align: center; }
+
+main { overflow: auto; padding: 18px 22px 40px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow);
+  padding: 16px 18px; margin-bottom: 14px; }
+.head { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.head h2 { margin: 0; font: 600 18px var(--mono); }
+.head .meta { color: var(--muted); font-size: 13px; }
+.head .spacer { flex: 1; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 14px 0; }
+.tab { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 7px 12px;
+  color: var(--muted); }
+.tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+h3 { font-size: 14px; margin: 0 0 10px; }
+.field { display: grid; grid-template-columns: 150px 1fr; gap: 6px 14px; padding: 8px 0;
+  border-top: 1px solid var(--line-soft); }
+.field:first-of-type { border-top: 0; }
+.field label { font-weight: 600; padding-top: 6px; }
+.field .key { font-family: var(--mono); font-size: 12.5px; color: var(--muted); font-weight: 400; display: block; }
+.field .help { color: var(--muted); font-size: 12px; margin-top: 3px; }
+.req { color: var(--err); margin-left: 3px; }
+.field.missing textarea, .field.missing input { border-color: var(--warn); background: var(--warn-soft); }
+.field.changed textarea, .field.changed input, td.changed input { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.codebox { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin-bottom: 10px; }
+.codebox .cap { padding: 6px 10px; background: var(--bg); border-bottom: 1px solid var(--line);
+  font-size: 12.5px; display: flex; gap: 10px; flex-wrap: wrap; }
+.codebox .cap b { font-family: var(--mono); }
+.codebox pre { margin: 0; padding: 8px 0; overflow: auto; background: var(--code-bg); font: 13px/1.5 var(--mono); }
+.codebox .ln { display: inline-block; width: 52px; padding-right: 12px; text-align: right; color: var(--muted);
+  user-select: none; }
+table.occ { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.occ th, table.occ td { border-bottom: 1px solid var(--line-soft); padding: 6px 8px; text-align: left;
+  vertical-align: middle; }
+table.occ th { color: var(--muted); font-weight: 600; font-size: 12px; }
+table.occ td.fn { color: var(--muted); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.occ input { min-width: 120px; padding: 4px 7px; }
+.pill { display: inline-block; padding: 0 7px; border-radius: 4px; font-size: 12px; background: var(--line-soft);
+  color: var(--muted); white-space: nowrap; }
+.pill.rep { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.note-box { border-radius: 6px; padding: 8px 12px; margin-bottom: 8px; font-size: 13px; }
+.note-box.warning { background: var(--warn-soft); color: var(--warn); }
+.note-box.error { background: var(--err-soft); color: var(--err); }
+.savebar { position: sticky; bottom: 0; display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 -2px 8px rgba(0,0,0,.06); }
+.savebar .hint { color: var(--muted); font-size: 12.5px; flex: 1; }
+
+/* 양식 미리보기: 인쇄물처럼 항상 흰 종이에 검은 글씨 */
+.paper { background: #fff; color: #000; border: 1px solid var(--line); border-radius: 4px; padding: 26px 30px;
+  max-width: 820px; margin: 0 auto; font-family: "Batang", "바탕", "Malgun Gothic", serif; }
+.paper .form-title { text-align: center; font: 700 17px "Malgun Gothic", sans-serif; text-decoration: underline;
+  text-underline-offset: 4px; margin: 0 0 16px; line-height: 1.6; }
+.paper table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
+.paper th, .paper td { border: 1px solid #000; padding: 5px 7px; vertical-align: middle; word-break: break-all; }
+.paper th { background: #e5e5e5; font: 400 13px "Malgun Gothic", sans-serif; }
+.paper pre { border: 1px solid #000; padding: 6px 8px; margin: 4px 0 8px; font: 12px/1.45 var(--mono);
+  white-space: pre-wrap; word-break: break-all; }
+.paper img { max-width: 100%; }
+.paper .note { font-size: 12px; margin: 8px 0 0; }
+
+dialog { border: 1px solid var(--line); border-radius: 10px; padding: 0; background: var(--panel); color: var(--text);
+  width: min(640px, 92vw); max-height: 86vh; }
+dialog::backdrop { background: rgba(10, 15, 22, .45); }
+.dlg-head { display: flex; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.dlg-head h2 { font-size: 16px; margin: 0; flex: 1; }
+.dlg-body { padding: 16px 18px; overflow: auto; max-height: calc(86vh - 120px); }
+.dlg-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); }
+.form-row { display: grid; grid-template-columns: 110px 1fr; gap: 10px; align-items: center; margin-bottom: 10px; }
+.checks { display: flex; gap: 16px; flex-wrap: wrap; }
+.files { list-style: none; margin: 10px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 6px; }
+.files li { display: flex; gap: 10px; padding: 6px 10px; border-top: 1px solid var(--line-soft); }
+.files li:first-child { border-top: 0; }
+.files a { color: var(--accent); flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.files span { color: var(--muted); font-size: 12px; }
+.diag { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; padding: 7px 0;
+  border-top: 1px solid var(--line-soft); font-size: 13px; }
+.diag:first-child { border-top: 0; }
+.diag .where { color: var(--muted); font-family: var(--mono); font-size: 12px; grid-column: 2; }
+#toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #1c2430; color: #fff;
+  padding: 9px 16px; border-radius: 6px; max-width: 80vw; display: none; z-index: 10; }
+#toast.error { background: var(--err); color: #fff; }
+
+/* 소스 트리 */
+.tree-opts { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+.tree { overflow: auto; flex: 1; padding: 4px 0 12px; }
+.trow { display: flex; align-items: center; gap: 4px; padding: 3px 10px 3px 0; cursor: pointer; white-space: nowrap;
+  border-left: 3px solid transparent; user-select: none; }
+.trow:hover { background: var(--bg); }
+.trow[aria-current="true"] { background: var(--accent-soft); border-left-color: var(--accent); }
+.trow.dim .tname { color: var(--muted); }
+.trow .caret { width: 16px; text-align: center; color: var(--muted); flex: none; font-size: 11px; }
+.trow .tname { overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.trow.proj .tname { font-weight: 600; }
+.trow.file .tname { font-family: var(--mono); font-size: 12.5px; }
+.trow .badge { flex: none; }
+.kind { color: var(--muted); font-size: 11.5px; flex: none; }
+
+/* 범위별 목록 */
+table.rows { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.rows th, table.rows td { border-bottom: 1px solid var(--line-soft); padding: 7px 8px; text-align: left;
+  vertical-align: top; }
+table.rows th { color: var(--muted); font-weight: 600; font-size: 12px; white-space: nowrap;
+  position: sticky; top: 0; background: var(--panel); }
+table.rows tbody tr { cursor: pointer; }
+table.rows tbody tr:hover { background: var(--bg); }
+table.rows tr.type-head td { background: var(--bg); font-weight: 600; font-size: 12.5px; cursor: default; }
+table.rows td.tag { font-family: var(--mono); font-weight: 600; white-space: nowrap; }
+table.rows td.where { font-family: var(--mono); font-size: 12.5px; }
+table.rows td.fn { color: var(--muted); max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.back { border: 0; background: none; color: var(--accent); padding: 0 0 8px; }
+.stats { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 14px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; font-size: 12.5px;
+  color: var(--muted); }
+.stat b { color: var(--text); font-size: 15px; margin-right: 4px; }
+
+/* 점검 결과 */
+.problem .phead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.problem .phead .spacer { flex: 1; }
+.pmsg { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; font-size: 13px; }
+.pmsg .badge { flex: none; }
+.fixbox { margin-top: 10px; border-top: 1px solid var(--line-soft); padding-top: 10px; }
+.fixbox pre.ctx { margin: 0; padding: 4px 0; background: var(--code-bg); color: var(--muted); font: 13px/1.5 var(--mono);
+  overflow: auto; }
+.fixbox pre.ctx .ln { display: inline-block; width: 52px; padding-right: 12px; text-align: right; user-select: none; }
+textarea.fix { border-color: var(--accent); border-radius: 0; font: 13px/1.5 var(--mono); padding-left: 52px;
+  white-space: pre; overflow-x: auto; tab-size: 4; }
+.sugg { margin-top: 8px; font-size: 13px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.linkish { border: 0; background: none; padding: 0 0 0 8px; color: inherit; text-decoration: underline; }
+
+/* 근거자료 */
+.att { display: flex; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line-soft); }
+.att:first-of-type { border-top: 0; }
+.att .thumb { width: 120px; height: 72px; flex: none; border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  display: flex; align-items: center; justify-content: center; color: #888; font-size: 12px; overflow: hidden; }
+.att .thumb img { max-width: 100%; max-height: 100%; }
+.att-body { flex: 1; min-width: 0; }
+.att-path { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  margin-bottom: 4px; }
+.att-btns { display: flex; gap: 6px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+.att-add { display: flex; gap: 8px; margin: 10px 0 8px; }
+.card.att-changed { box-shadow: inset 3px 0 0 var(--accent); }
+.card .help { color: var(--muted); font-size: 12px; }
+
+/* 규칙 목록 */
+textarea.rules { height: 180px; white-space: pre; tab-size: 12; font: 13px/1.5 var(--mono); field-sizing: fixed; }
+#r-standard, #r-search { border: 1px solid var(--line); border-radius: 6px; padding: 6px; background: var(--panel);
+  color: inherit; width: 100%; box-sizing: border-box; }
+h3.rsec { font-size: 13px; margin: 14px 0 6px; }
+.rlist { max-height: 240px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+.rlist table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.rlist td { padding: 3px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+.rlist tr:first-child td { border-top: 0; }
+.rlist td.rid { font-family: var(--mono); white-space: nowrap; width: 1%; }
+.rlist .empty { padding: 10px; color: var(--muted); font-size: 12.5px; }
+.rnote { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
+.rmeta { font-size: 12.5px; color: var(--muted); margin: 0 0 6px; line-height: 1.6; overflow-wrap: anywhere; }
+.rmeta b { color: inherit; font-weight: 600; }
+.rinfo, .radd { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 8px; align-items: center; }
+.rinfo label { display: flex; gap: 6px; align-items: center; font-size: 12.5px; flex: 1 1 260px; }
+.rinfo input, .radd input { flex: 1 1 160px; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px;
+  background: var(--panel); color: inherit; }
+.radd #r-add-title { flex: 3 1 240px; }
+.rhelp { color: var(--muted); font-size: 12px; margin: 0 0 6px; }
+#r-msg:empty { display: none; }
+#r-builtin[hidden], #r-mine[hidden], #r-note[hidden], #r-save[hidden] { display: none; }
+.namehint { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.namehint button { padding: 2px 8px; font-size: 12px; margin-right: 6px; }
+
+/* 정보 (설정 ▸ 정보) */
+.ab-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+.ab-tabs button { border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0; background: transparent;
+  padding: 6px 12px; margin-bottom: -1px; color: var(--muted); }
+.ab-tabs button[aria-selected="true"] { border-color: var(--line); background: var(--panel); color: inherit; font-weight: 600; }
+#ab-sw[hidden], #ab-oss[hidden], #ab-doc[hidden] { display: none; }
+.ab-dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: 13px; }
+.ab-dl dt { color: var(--muted); }
+.ab-dl dd { margin: 0; overflow-wrap: anywhere; }
+.ab-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-bottom: 14px; }
+.ab-table th, .ab-table td { border-top: 1px solid var(--line); padding: 5px 6px; text-align: left; vertical-align: top;
+  overflow-wrap: anywhere; }
+.ab-table th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.ab-note { color: var(--muted); font-size: 12.5px; margin: 0 0 8px; }
+.ab-doc-head { display: flex; justify-content: space-between; align-items: center; margin: 12px 0 6px; }
+pre.ab-doc { max-height: 280px; overflow: auto; white-space: pre-wrap; font: 12px/1.5 var(--mono); border: 1px solid var(--line);
+  border-radius: 6px; padding: 8px; margin: 0; background: var(--panel); }
+
+/* 다이어그램 */
+dialog.wide { width: min(980px, 94vw); }
+.dgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.dgrid textarea { height: 300px; resize: vertical; white-space: pre; tab-size: 2; font: 13px/1.5 var(--mono); field-sizing: fixed; }
+.dgrid select { flex: 1; border: 1px solid var(--line); border-radius: 6px; padding: 6px; background: var(--panel); }
+.dprev { border: 1px solid var(--line); border-radius: 6px; background: #fff; color: #555; min-height: 300px; max-height: 60vh;
+  overflow: auto; display: flex; align-items: center; justify-content: center; padding: 10px; font-size: 13px; }
+.dprev svg { max-width: 100%; height: auto; }
+.derr { color: var(--err); font-size: 12.5px; min-height: 18px; margin-top: 6px; }
+@media (max-width: 760px) { .dgrid { grid-template-columns: minmax(0, 1fr); } }
+
+/* 열기 대화상자 */
+.path-row { display: flex; gap: 8px; margin-bottom: 10px; }
+.entries { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 6px;
+  max-height: 46vh; overflow: auto; }
+.entries li { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--line-soft);
+  cursor: pointer; }
+.entries li:first-child { border-top: 0; }
+.entries li:hover { background: var(--bg); }
+.entries .ico { width: 34px; flex: none; font-size: 11.5px; color: var(--muted); }
+.entries .project .nm { color: var(--accent); font-weight: 600; }
+.entries .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.entries li.dir[aria-selected="true"] { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.entries li.dir[aria-selected="true"] .nm { color: var(--accent); font-weight: 600; }
+.entries .enter { border: 0; background: none; padding: 0 6px; font-size: 16px; color: var(--muted); line-height: 1; }
+.entries .enter:hover { color: var(--accent); }
+.choice { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 6px;
+  background: var(--accent-soft); display: flex; flex-direction: column; gap: 6px; }
+.g-title { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.g-title span { flex: 1; min-width: 0; }
+.i-lead { margin: 0 0 12px; font-size: 13px; }
+.i-lead:empty { display: none; }
+.i-preview { font-weight: 600; text-decoration: underline; }
+.g-out { font-size: 12px; word-break: break-all; }
+/* 출력 폴더·판 폴더 경로: 누르면 서버가 탐색기로 연다(브라우저는 PC 의 폴더를 직접 열 수 없다) */
+a.folder-link { color: var(--accent); text-decoration: underline; cursor: pointer; word-break: break-all; }
+a.folder-link::before { content: "📂 "; text-decoration: none; display: inline-block; margin-right: 2px; }
+.g-issue { display: grid; gap: 6px; }
+.g-history { font-size: 13px; }
+.g-history[hidden] { display: none; }
+.g-history table, .plist table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+.g-history td, .g-history th, .plist td, .plist th { text-align: left; padding: 5px 8px;
+  border-top: 1px solid var(--line-soft); vertical-align: top; }
+.g-history th, .plist th { font-weight: 600; color: var(--muted); font-size: 12px; }
+.plist h3 { font-size: 14px; margin: 14px 0 2px; }
+.plist h3:first-child { margin-top: 0; }
+.plist h4 { font-size: 12.5px; margin: 8px 0 0; color: var(--muted); font-weight: 600; }
+.plist tr.current td { background: var(--accent-soft, rgba(60, 120, 220, .08)); }
+.plist tr.missing td { color: var(--muted); }
+.plist table { table-layout: fixed; }
+.plist td:nth-child(n+2), .plist th { white-space: nowrap; }
+.plist .path { font-size: 11.5px; color: var(--muted); word-break: break-all; white-space: normal; }
+.plist .acts { white-space: nowrap; text-align: right; }
+.p-where { flex: 1; align-self: center; margin: 0; }
+.home { max-width: 860px; margin: 0 auto; text-align: left; }
+.split { display: inline-flex; }
+.split button:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.split button:last-child { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 0; padding: 6px 8px; }
+.choice[hidden] { display: none; }      /* display: flex 가 hidden 속성을 덮지 않도록 */
+.choice .choice-title { font-weight: 600; font-size: 13px; }
+.choice button { text-align: left; white-space: normal; }
+.choice button .kind { margin-left: 8px; }
+.choice button.primary .kind { color: inherit; opacity: .85; }
+
+@media (max-width: 860px) {
+  .app { height: auto; }
+  .body { grid-template-columns: minmax(0, 1fr); }
+  .resizer { display: none; }
+  .steps { flex-basis: 100%; }
+  .pane { padding: 14px; }
+  aside { border-right: 0; border-bottom: 1px solid var(--line); max-height: 44vh; }
+  .field { grid-template-columns: 1fr; }
+  main { padding: 14px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1 title="SRT-ARA: Software Reliability Test – Analysis Report Automation (SW 신뢰성시험 분석 보고서 자동화 도구)"><span class="brand">SRT-ARA <span class="brand-ver" id="app-ver"></span></span><span class="brand-sub">SW 신뢰성시험 분석 보고서 자동화</span></h1>
+    <!-- 왼쪽에서 오른쪽으로 작업 순서: 프로젝트 → 1 잘못 쓴 주석 고치기 → 2 예외사유 검토·편집 → 3 보고서 만들기 -->
+    <div class="menu-wrap">
+      <button id="btn-proj" class="proj-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-proj"
+        title="프로젝트를 열거나 바꿉니다">
+        <span class="proj-text"><span class="proj-name" id="proj-name">프로젝트 열기</span>
+          <span class="proj-sub" id="proj-sub"></span></span><span class="caret" aria-hidden="true">▾</span>
+      </button>
+      <div class="menu" id="menu-proj" role="menu" hidden></div>
+    </div>
+    <nav class="steps" aria-label="작업 순서">
+      <button class="step" data-step="problems" title="잘못 쓴 예외사유 주석을 찾아 고칩니다">
+        <span class="num">1</span><span class="lbl">잘못 쓴 주석 고치기</span><span class="badge" id="st-problems"></span></button>
+      <span class="arrow" aria-hidden="true">›</span>
+      <button class="step" data-step="scope" title="예외사유를 범위별로 보고 내용을 고쳐 소스에 반영합니다">
+        <span class="num">2</span><span class="lbl">예외사유 검토·편집</span><span class="badge" id="st-scope"></span></button>
+      <span class="arrow" aria-hidden="true">›</span>
+      <button class="step" data-step="report" title="양식대로 md·hwpx 보고서를 만들고 판으로 보관합니다">
+        <span class="num">3</span><span class="lbl">보고서 만들기</span><span class="badge" id="st-report"></span></button>
+    </nav>
+    <div class="menu-wrap">
+      <button id="btn-settings" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-settings">설정 <span aria-hidden="true">▾</span></button>
+      <div class="menu right" id="menu-settings" role="menu" hidden>
+        <button role="menuitem" data-act="rules">규칙 목록…<span class="meta">기준별 규칙 번호·규칙명(CWE 포함)을 보고, MISRA 등은 직접 넣습니다</span></button>
+        <button role="menuitem" data-act="projects">프로젝트 목록 관리…<span class="meta">이 PC에서 다룬 사업·프로젝트</span></button>
+        <button role="menuitem" data-act="about">정보…<span class="meta">소프트웨어 정보, 오픈소스 정보</span></button>
+      </div>
+    </div>
+  </header>
+  <div class="body">
+    <aside>
+      <div class="filters">
+        <div class="chips" id="chips"></div>
+        <input type="search" id="search" placeholder="식별자, 파일명, 내용 검색" aria-label="검색">
+        <label class="tree-opts"><input type="checkbox" id="only-tagged"> 예외사유가 있는 파일만 보기</label>
+      </div>
+      <div class="tree" id="tree" role="tree" aria-label="소스 구성"></div>
+      <div class="resizer" id="resizer" role="separator" aria-orientation="vertical" aria-label="왼쪽 창 너비"
+        tabindex="0" title="끌어서 너비를 바꿉니다 (두 번 누르면 처음 너비)"></div>
+    </aside>
+    <main id="main"></main>
+    <!-- 3 보고서 만들기: 다른 단계처럼 오른쪽 화면으로 보인다 -->
+    <section id="report" class="pane" hidden aria-labelledby="report-title">
+      <div class="head"><div><h2 id="report-title" style="font-family:inherit">보고서 만들기</h2>
+        <div class="meta">소스에 반영된 내용으로 양식(부록 7)대로 만듭니다.</div></div></div>
+      <div id="g-notices"></div>
+      <div class="card">
+        <div class="form-row"><span>보고서 제목</span><div class="g-title"><span id="g-heading"></span>
+          <button type="button" id="g-info">바꾸기…</button></div></div>
+        <div id="g-placeholder"></div>
+        <div class="form-row"><span>출력 형식</span><div class="checks">
+          <label><input type="checkbox" id="g-md" checked> md</label>
+          <label><input type="checkbox" id="g-hwpx" checked> hwpx</label></div></div>
+        <div class="form-row"><span>코드내용</span><div class="checks">
+          <label><input type="radio" name="g-code" value="text" checked> 글자로 발췌</label>
+          <label><input type="radio" name="g-code" value="image" id="g-image"> 캡처 그림</label></div></div>
+        <div class="form-row"><span>쪽 나눔</span><div class="checks">
+          <label><input type="checkbox" id="g-compact"> hwpx에서 예외사유마다 쪽을 나누지 않음</label></div></div>
+        <div class="form-row"><span>출력 폴더</span><div class="mono g-out" id="g-out"></div></div>
+        <div class="form-row"><span>시험 기준</span><div id="g-basis" class="g-basis"></div></div>
+        <div class="form-row"><span>판 보관</span><div class="g-issue">
+          <label><input type="checkbox" id="g-issue"> <span id="g-issue-label">새 판으로 보관</span></label>
+          <input type="text" id="g-note" maxlength="500" placeholder="판 메모 (예: 1차 시험 결과 제출)" disabled>
+          <div class="namehint">보관하면 출력 폴더의 이력/ 에 보고서 묶음과, 지난 판과 비교한 변경내역이 남습니다.</div></div></div>
+        <div class="g-run-row"><button type="button" class="primary" id="g-run">보고서 만들기</button></div>
+        <div id="g-result"></div>
+      </div>
+      <div class="card g-history" id="g-history"><h3>판 이력</h3><div id="g-history-list"></div></div>
+    </section>
+  </div>
+</div>
+
+<dialog id="dlg-info">
+  <form method="dialog" id="form-info">
+    <div class="dlg-head"><h2 id="i-head">보고서 정보</h2><button value="close" aria-label="닫기">닫기</button></div>
+    <div class="dlg-body">
+      <p class="i-lead" id="i-lead"></p>
+      <div class="form-row"><label for="i-project">사업명</label><input type="text" id="i-project" maxlength="200" required></div>
+      <div class="form-row"><label for="i-csci">CSCI명</label><input type="text" id="i-csci" maxlength="200"></div>
+      <div class="form-row"><label for="i-csc">CSC명</label><input type="text" id="i-csc" maxlength="200" required></div>
+      <div class="form-row"><span>보고서 제목</span><div class="i-preview" id="i-preview"></div></div>
+      <div class="namehint" id="i-file"></div>
+      <div id="i-result"></div>
+    </div>
+    <div class="dlg-foot"><button value="close" id="i-later">나중에</button><button type="button" class="primary" id="i-save">저장</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-projects" class="wide">
+  <form method="dialog">
+    <div class="dlg-head"><h2>프로젝트 목록</h2><button value="close" aria-label="닫기">닫기</button></div>
+    <div class="dlg-body" id="p-body"></div>
+    <div class="dlg-foot"><span class="namehint p-where" id="p-where"></span>
+      <button type="button" id="p-open">다른 폴더 열기…</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-open">
+  <form method="dialog">
+    <div class="dlg-head"><h2>열기</h2><button value="close" aria-label="닫기">닫기</button></div>
+    <div class="dlg-body">
+      <div class="path-row"><input type="text" id="o-path" aria-label="폴더 경로" spellcheck="false">
+        <button type="button" id="o-go">이동</button>
+        <button type="button" id="o-pick" title="파일 탐색기 모양의 폴더 선택 창을 엽니다">폴더 찾아보기…</button></div>
+      <ul class="entries" id="o-entries"></ul>
+      <div class="choice" id="o-choice" hidden></div>
+      <p class="help" style="color:var(--muted);font-size:12.5px;margin:10px 0 0">
+        폴더를 한 번 누르면 고르고, 두 번 누르거나 › 를 누르면 그 안으로 들어갑니다. "고른 폴더 열기"(고른 폴더가 없으면
+        "이 폴더 열기")를 누르면, 그 폴더에 프로젝트 파일이 있으면 무엇으로 열지 고르고, 없으면 모든 소스(하위 폴더 포함)를 엽니다.
+        목록의 프로젝트 파일을 바로 눌러도 되고, 소스 파일만 골라서 열 수도 있습니다.</p>
+    </div>
+    <div class="dlg-foot">
+      <label style="margin-right:auto;font-size:13px"><input type="checkbox" id="o-add"> 지금 연 것에 추가</label>
+      <button type="button" id="o-files" disabled>고른 파일 열기</button>
+      <button type="button" id="o-folder" class="primary">이 폴더 열기</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-rules" class="wide">
+  <form method="dialog">
+    <div class="dlg-head"><h2>규칙 목록</h2><button value="close" aria-label="닫기">닫기</button></div>
+    <div class="dlg-body">
+      <p class="help" style="color:var(--muted);font-size:13px;margin:0 0 12px">기준별로 근거에 적을 <b>규칙 번호와 규칙명</b> 목록을 봅니다.
+        예외사유를 편집할 때 번호로 고를 수 있고, 고르면 규칙명이 함께 들어갑니다.
+        도구에 목록이 없는 기준(MISRA 등)은 가지고 계신 문서를 보고 아래에 넣으십시오.</p>
+      <div class="form-row"><label for="r-standard">기준</label><select id="r-standard"></select></div>
+      <div id="r-info" class="help" style="color:var(--muted);font-size:12.5px;margin:-4px 0 8px 120px"></div>
+      <h3 class="rsec">도구에 든 목록</h3>
+      <div id="r-builtin">
+        <div id="r-meta" class="rmeta"></div>
+        <input type="search" id="r-search" placeholder="번호나 이름으로 찾기 (예: CA1000, IDE0001, CWE-476, overflow)" aria-label="목록에서 찾기">
+        <div id="r-count" class="help" style="color:var(--muted);font-size:12px;margin:4px 0"></div>
+        <div class="rlist" id="r-list" role="region" aria-label="도구에 든 목록"></div>
+      </div>
+      <p id="r-note" class="help rnote"></p>
+      <div id="r-mine">
+        <h3 class="rsec">직접 넣은 규칙</h3>
+        <div class="rinfo">
+          <label>버전 <input type="text" id="r-version" maxlength="200" placeholder="예: MISRA C:2012 Amendment 4 (2023)"></label>
+          <label>가져온 곳 <input type="text" id="r-source" maxlength="500" placeholder="URL 또는 문서 이름 (예: https://misra.org.uk/publications/)"></label>
+        </div>
+        <div class="radd">
+          <input type="text" id="r-add-id" placeholder="번호 (예: Rule 0.0)" aria-label="더할 규칙 번호">
+          <input type="text" id="r-add-title" placeholder="규칙명" aria-label="더할 규칙명">
+          <button type="button" id="r-add">한 줄 더하기</button>
+          <button type="button" id="r-import">파일에서 불러오기…</button>
+          <input type="file" id="r-file" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden>
+        </div>
+        <div class="help rhelp">CSV는 "번호"·"규칙명" 머리줄이 있으면 그 열을, 없으면 앞의 두 열을 읽습니다(엑셀은 "CSV(쉼표로 분리)"로 저장).
+          TXT는 한 줄에 "번호&lt;탭&gt;규칙명" 또는 "번호: 규칙명"입니다. 같은 번호는 새것으로 바뀝니다.
+          불러오거나 더한 뒤 <b>저장</b>을 눌러야 저장됩니다.</div>
+        <div id="r-msg" class="help rhelp" role="status"></div>
+        <textarea id="r-text" class="mono rules" rows="10" spellcheck="false" aria-label="규칙 번호와 규칙명"
+          placeholder="한 줄에 하나씩: 번호<탭>규칙명  또는  번호: 규칙명&#10;예) Rule 0.0: 규칙명"></textarea>
+        <div id="r-error" class="derr" role="alert"></div>
+        <p class="help" id="r-path" style="color:var(--muted);font-size:12px;margin:6px 0 0"></p>
+      </div>
+    </div>
+    <div class="dlg-foot"><button type="button" class="primary" id="r-save">저장</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-about" class="wide">
+  <form method="dialog">
+    <div class="dlg-head"><h2>정보</h2><button value="close" aria-label="닫기">닫기</button></div>
+    <div class="dlg-body">
+      <div class="ab-tabs" role="tablist">
+        <button type="button" role="tab" data-ab-tab="sw" aria-selected="true">소프트웨어 정보</button>
+        <button type="button" role="tab" data-ab-tab="oss" aria-selected="false">오픈소스 정보</button>
+      </div>
+      <div id="ab-sw" role="tabpanel"></div>
+      <div id="ab-oss" role="tabpanel" hidden></div>
+      <div id="ab-doc" hidden>
+        <div class="ab-doc-head"><b id="ab-doc-name"></b><button type="button" id="ab-doc-close">전문 닫기</button></div>
+        <pre id="ab-doc-text" class="ab-doc"></pre>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-diagram" class="wide">
+  <form method="dialog">
+    <div class="dlg-head"><h2>다이어그램</h2><button value="close" aria-label="닫기">닫기</button></div>
+    <div class="dlg-body">
+      <div class="dgrid">
+        <div>
+          <div class="path-row"><label for="d-sample" style="align-self:center;white-space:nowrap">예시 넣기</label>
+            <select id="d-sample"><option value="">고르십시오</option><option value="flowchart">순서도 (flowchart)</option>
+              <option value="sequence">순서 다이어그램 (sequence)</option><option value="state">상태 전이도 (state)</option></select></div>
+          <textarea id="d-code" class="mono" rows="14" spellcheck="false" aria-label="Mermaid 코드"></textarea>
+        </div>
+        <div class="dprev" id="d-preview"></div>
+      </div>
+      <div id="d-error" class="derr" role="alert"></div>
+      <div class="form-row" style="margin-top:10px"><label for="d-caption">그림 설명</label><input type="text" id="d-caption"></div>
+      <p class="help" style="color:var(--muted);font-size:12.5px;margin:6px 0 0">Mermaid 문법으로 씁니다. 그림(PNG)과 코드(.mmd)가
+        소스 파일 옆의 <code>srt_attach</code> 폴더에 함께 저장되어 나중에 다시 고칠 수 있습니다.</p>
+    </div>
+    <div class="dlg-foot"><button type="button" class="primary" id="d-save" disabled>그림으로 넣기</button></div>
+  </form>
+</dialog>
+
+<div id="toast" role="status"></div>
+
+<script>
+"use strict";
+const TOKEN = "__TOKEN__";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const SUBJECT = {"S-C": "규칙", "S-W": "취약점", "S-M": "메트릭", "D": "미달성사유"};
+
+let S = null;            // 서버에서 받은 상태
+let selected = null;     // 선택한 예외사유 key
+let view = "scope";      // "scope": 범위별 목록, "item": 예외사유 하나
+let scope = null;        // 선택한 트리 노드 id (null 이면 전체)
+let filter = "ALL";
+let query = "";
+let tab = "edit";
+let onlyTagged = false;
+let treeOf = "";         // 지금 트리가 어떤 입력으로 만들어졌는지 (바뀌면 펼침 상태를 새로 정한다)
+const opened = new Set();   // 펼친 트리 노드 id
+const drafts = {};       // 예외사유 key -> { 블록 key -> { 항목 -> 값 } } (편집 중인 값만)
+let OCC = [];            // 발생 위치(와 참조 코드) 목록: {item, n, role, block}
+let BY_FILE = {};        // 파일 식별자 -> OCC
+let NODES = {};          // 트리 노드 id -> 노드
+
+const blockKey = (b) => [b.file, b.test, b.id, b.index, b.ordinal].join("|");
+const typeOf = (code) => S.types.find((t) => t.code === code);
+const itemOf = (key) => S.items.find((i) => i.key === key);
+const norm = (v) => v.split(/\r?\n/).map((l) => l.trim().split(/\s+/).join(" ")).filter(Boolean).join("\n");
+
+function toast(msg, isError) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.className = isError ? "error" : "";
+  t.style.display = "block";
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => { t.style.display = "none"; }, isError ? 7000 : 3000);
+}
+
+async function api(path, payload) {
+  const opt = payload === undefined ? {} : {
+    method: "POST", headers: {"Content-Type": "application/json", "X-SRT-Token": TOKEN},
+    body: JSON.stringify(payload)};
+  const res = await fetch(path, opt);
+  const data = await res.json();
+  if (data.state) setState(data.state);
+  if (!res.ok) throw new Error(data.error || "요청을 처리하지 못했습니다.");
+  return data;
+}
+
+// 서버(server.py 의 API_LEVEL)와 같아야 하는 번호. 다르면 화면만 새것이고 서버는 예전 것이다.
+const API_LEVEL = 8;
+
+function staleServerNotice(level) {
+  if (level === API_LEVEL || $("stale-server")) return;
+  const box = document.createElement("div");
+  box.id = "stale-server";
+  box.className = "note-box error";
+  box.setAttribute("role", "alert");
+  box.style.cssText = "margin:0;border-radius:0";
+  box.textContent = "도구가 새로 바뀌었는데 예전 서버가 실행 중입니다. 일부 기능이 보이지 않거나 동작하지 않을 수 있습니다. "
+    + "검은 콘솔 창을 닫고 srtgen.bat 을 다시 두 번 눌러 실행하십시오.";
+  document.body.prepend(box);
+}
+
+function setState(state) {
+  S = state;
+  staleServerNotice(S.api);
+  $("app-ver").textContent = S.version_label || "";       // 제목 옆의 버전 (ver.0.01)
+  buildIndex();
+  if (selected && !itemOf(selected)) { selected = null; view = "scope"; }
+  if (scope !== null && !NODES[scope]) scope = null;
+  // 소스에서 사라진 예외사유의 편집 내용은 버린다
+  Object.keys(drafts).forEach((k) => { if (!itemOf(k)) delete drafts[k]; });
+  render();
+  // 보고서 정보(srtgen.json)가 없는 프로젝트를 처음 열면 한 번 묻는다
+  if (S.inputs.length && S.info.file && !S.info.saved && !infoAsked.has(S.info.file)
+      && !document.querySelector("dialog[open]")) {
+    infoAsked.add(S.info.file);
+    showInfo(true);
+  }
+}
+
+/* ---- 보고서 정보: 사업명, CSCI명, CSC명 (프로젝트 폴더의 srtgen.json) ---- */
+const infoAsked = new Set();
+const INFO_KEYS = ["project", "csci", "csc"];
+function headingOf(values) { return values.filter((v) => v).join(" "); }
+function updateInfoPreview() {
+  $("i-preview").textContent = headingOf(INFO_KEYS.map((k) => $("i-" + k).value.trim())) || "—";
+}
+function showInfo(first) {
+  const unset = !S.info.saved;
+  INFO_KEYS.forEach((k) => {
+    const example = S.info.defaults[k];
+    // 저장한 적이 없으면 양식 예시 값(OOO)은 입력 칸에 넣지 않고 흐린 글씨로만 보인다
+    $("i-" + k).value = unset && S[k] === example ? "" : S[k];
+    $("i-" + k).placeholder = "예) " + (k === "csc" ? "운용 CSC" : example);
+  });
+  $("i-head").textContent = first ? "보고서 정보 — 처음 여는 프로젝트" : "보고서 정보";
+  $("i-lead").textContent = first
+    ? "이 프로젝트에는 보고서 정보가 없습니다. 보고서 제목에 들어갈 이름을 적어 주십시오. 나중에 위쪽의 제목을 눌러 바꿀 수 있습니다."
+    : "";
+  $("i-file").textContent = S.info.file
+    ? `저장 위치: ${S.info.file} (소스와 함께 형상관리하면 다른 PC에서도 같은 제목이 나옵니다)` : "";
+  $("i-result").innerHTML = S.info.error ? `<div class="note-box error">${esc(S.info.error)}</div>` : "";
+  updateInfoPreview();
+  $("dlg-info").showModal();
+  (INFO_KEYS.map((k) => $("i-" + k)).find((el) => el.required && !el.value) || $("i-project")).focus();
+}
+INFO_KEYS.forEach((k) => $("i-" + k).addEventListener("input", updateInfoPreview));
+$("form-info").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); $("i-save").click(); }
+});
+$("i-save").addEventListener("click", async () => {
+  const values = Object.fromEntries(INFO_KEYS.map((k) => [k, $("i-" + k).value.trim()]));
+  const missing = ["project", "csc"].find((k) => !values[k]);
+  if (missing) { $("i-" + missing).focus(); $("i-result").innerHTML = '<div class="note-box error">사업명과 CSC명을 적으십시오.</div>'; return; }
+  try {
+    const res = await api("/api/report-info", values);
+    $("dlg-info").close();
+    setState(res.state);
+    toast("보고서 정보를 저장했습니다.");
+    if (view === "report") renderReport();
+  } catch (err) {
+    $("i-result").innerHTML = `<div class="note-box error">${esc(err.message)}</div>`;
+  }
+});
+/* ---- 프로젝트 목록 (사용자 폴더의 .srtgen/projects.json): 사업명 → CSCI명 → CSC명 ---- */
+function projectListHtml() {
+  if (!S.registry.length) return '<div class="empty">아직 연 프로젝트가 없습니다. 열기로 프로젝트를 여십시오.</div>';
+  const groups = {};
+  S.registry.forEach((e) => {
+    const p = e.project || "(사업명 없음)", c = e.csci || "(CSCI명 없음)";
+    ((groups[p] = groups[p] || {})[c] = groups[p][c] || []).push(e);
+  });
+  let html = '<div class="plist">';
+  Object.entries(groups).forEach(([project, byCsci]) => {
+    html += `<h3>${esc(project)}</h3>`;
+    Object.entries(byCsci).forEach(([csci, entries]) => {
+      html += `<h4>${esc(csci)}</h4><table><colgroup><col><col style="width:110px"><col style="width:130px">`
+        + `<col style="width:150px"><col style="width:160px"></colgroup><thead><tr><th>CSC명</th><th>예외사유</th><th>열어 본 때</th><th>보고서</th><th></th></tr></thead><tbody>`;
+      entries.forEach((e) => {
+        const cls = [e.key === S.current ? "current" : "", e.exists ? "" : "missing"].join(" ").trim();
+        const report = e.generated ? `${esc(e.generated)}${e.version ? ` · v${e.version}` : ""}` : "—";
+        html += `<tr class="${cls}"><td><strong>${esc(e.csc || "(CSC명 없음)")}</strong>
+            <div class="path">${e.inputs.map(esc).join("<br>")}${e.exists ? "" : " — 찾을 수 없습니다"}</div></td>
+          <td>${e.items ?? 0}건${e.errors ? ` <span class="badge err">오류 ${e.errors}</span>` : ""}</td>
+          <td>${esc(e.opened || "")}</td><td>${report}</td>
+          <td class="acts">${e.key === S.current ? "<span class=\"namehint\">지금 연 것</span>"
+            : `<button type="button" data-p-open="${esc(e.key)}" ${e.exists ? "" : "disabled"}>열기</button>`}
+            <button type="button" data-p-remove="${esc(e.key)}" title="목록에서만 뺍니다. 파일은 그대로입니다.">빼기</button></td></tr>`;
+      });
+      html += "</tbody></table>";
+    });
+  });
+  return html + "</div>";
+}
+function showProjects() {
+  $("p-body").innerHTML = projectListHtml();
+  $("p-where").textContent = "목록 위치: " + S.registry_path;
+  if (!$("dlg-projects").open) $("dlg-projects").showModal();
+}
+async function projectAction(e) {
+  const open = e.target.closest("[data-p-open]"), remove = e.target.closest("[data-p-remove]");
+  if (!open && !remove) return false;
+  const entry = S.registry.find((x) => x.key === (open || remove).dataset[open ? "pOpen" : "pRemove"]);
+  if (!entry) return true;
+  if (open) {
+    if (Object.keys(drafts).length && !confirm("반영하지 않은 편집 내용이 있습니다. 버리고 다른 프로젝트를 열까요?")) return true;
+    if ($("dlg-projects").open) $("dlg-projects").close();
+    await openPaths(entry.inputs, false);        // 목록의 프로젝트는 그것만 연다
+  } else {
+    if (!confirm(`목록에서 뺄까요?\n${entry.inputs.join("\n")}\n(프로젝트의 파일은 그대로입니다)`)) return true;
+    try { setState((await api("/api/projects/remove", {key: entry.key})).state); } catch (err) { toast(err.message, true); }
+    if ($("dlg-projects").open) showProjects();
+  }
+  return true;
+}
+$("p-body").addEventListener("click", projectAction);
+/* ---- 펼침 메뉴: 프로젝트(무엇을 다룰지), 설정(드물게 쓰는 것) ---- */
+function closeMenus() {
+  document.querySelectorAll(".menu").forEach((m) => { m.hidden = true; });
+  document.querySelectorAll('[aria-haspopup="menu"]').forEach((b) => b.setAttribute("aria-expanded", "false"));
+}
+function toggleMenu(btn, menu, build) {
+  const opening = menu.hidden;
+  closeMenus();
+  if (!opening) return;
+  if (build) build();
+  menu.hidden = false;
+  btn.setAttribute("aria-expanded", "true");
+  const first = menu.querySelector("button:not(:disabled)");
+  if (first) first.focus();
+}
+function buildProjectMenu() {
+  const open = S.inputs.length > 0;
+  const recent = S.registry.filter((e) => e.key !== S.current).slice(0, 5);
+  let html = "";
+  if (open) {
+    html += `<div class="label">지금 연 프로젝트</div>
+      <div class="cur">${esc(projectLabel())} · 소스 ${S.files_scanned}개 (예외사유 주석 포함 ${S.files_with_tags}개)<br>${S.inputs.map(esc).join("<br>")}</div>
+      <button role="menuitem" data-act="info">보고서 제목 바꾸기…<span class="meta">${esc(S.heading)}</span></button>
+      <button role="menuitem" data-act="rescan">소스 다시 읽기<span class="meta">개발도구에서 고친 소스를 읽습니다. 이 창으로 돌아오면 저절로 읽습니다</span></button>
+      <div class="sep"></div>`;
+  }
+  if (recent.length) {
+    html += '<div class="label">최근 프로젝트</div>' + recent.map((e) =>
+      `<button role="menuitem" data-p-open="${esc(e.key)}" ${e.exists ? "" : "disabled"}>${esc(e.csc || "(CSC명 없음)")}
+        <span class="meta">${esc([e.project, e.csci].filter((v) => v).join(" / "))}${e.exists ? "" : " — 찾을 수 없습니다"}</span></button>`).join("");
+  }
+  if (S.registry.length) html += '<button role="menuitem" data-act="projects">프로젝트 목록 전체…<span class="meta">사업별로 묶어 봅니다</span></button><div class="sep"></div>';
+  html += `<button role="menuitem" data-act="open">폴더 열기…<span class="meta">파일 탐색기 모양의 창에서 고릅니다</span></button>
+    <button role="menuitem" data-act="open-list">목록에서 고르기…<span class="meta">프로젝트 파일이나 소스 파일을 고르거나, 여러 개를 함께 엽니다</span></button>`;
+  $("menu-proj").innerHTML = html;
+}
+async function menuAction(e) {
+  const b = e.target.closest("button");
+  if (!b || b.disabled) return;
+  closeMenus();
+  if (b.dataset.pOpen) { await projectAction(e); return; }
+  const act = b.dataset.act;
+  if (act === "info") showInfo(false);
+  else if (act === "rescan") rescan(false);
+  else if (act === "projects") showProjects();
+  else if (act === "open") pickFolder();
+  else if (act === "open-list") showOpen();
+  else if (act === "rules") showRules();
+  else if (act === "about") showAbout();
+}
+$("btn-proj").addEventListener("click", () => toggleMenu($("btn-proj"), $("menu-proj"), buildProjectMenu));
+$("btn-settings").addEventListener("click", () => toggleMenu($("btn-settings"), $("menu-settings")));
+["menu-proj", "menu-settings"].forEach((id) => {
+  $(id).addEventListener("click", menuAction);
+  $(id).addEventListener("keydown", (e) => {          // 위아래 화살표로 항목을 옮긴다
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const items = [...$(id).querySelectorAll("button:not(:disabled)")];
+    const i = items.indexOf(document.activeElement);
+    items[(i + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length].focus();
+  });
+});
+document.addEventListener("click", (e) => { if (!e.target.closest(".menu-wrap")) closeMenus(); });
+document.addEventListener("keydown", (e) => {
+  const open = document.querySelector(".menu:not([hidden])");
+  if (e.key === "Escape" && open) { closeMenus(); open.parentElement.querySelector("[aria-haspopup]").focus(); }
+});
+
+/* ---- 개발도구에서 고치고 이 창으로 돌아오면 바뀐 소스를 저절로 다시 읽는다 ---- */
+let lastCheck = 0;
+async function checkChanged() {
+  if (!S || !S.inputs.length || document.hidden || Date.now() - lastCheck < 1500) return;
+  lastCheck = Date.now();
+  try {
+    const res = await (await fetch("/api/changed")).json();
+    if (res.changed) await rescan(true);
+  } catch (err) { /* 확인하지 못하면 메뉴의 "소스 다시 읽기"로 읽는다 */ }
+}
+window.addEventListener("focus", checkChanged);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) checkChanged(); });
+
+$("p-open").addEventListener("click", () => { $("dlg-projects").close(); pickFolder(); });
+
+/* ---- 왼쪽 창 너비: 끌어서 바꾸고 이 브라우저에 기억한다 ---- */
+const SIDE_DEFAULT = 340, SIDE_MIN = 200, SIDE_KEY = "srtgen.sideWidth";
+let sideWant = SIDE_DEFAULT;          // 사용자가 정한 너비. 창이 좁으면 그보다 작게 보일 뿐 바꾸지 않는다
+function setSide(px, save, keep) {
+  if (!keep) sideWant = px;
+  const max = Math.max(SIDE_MIN, Math.min(900, window.innerWidth - 360));
+  const w = Math.round(Math.min(max, Math.max(SIDE_MIN, px)));
+  document.documentElement.style.setProperty("--side-w", w + "px");
+  const r = $("resizer");
+  r.setAttribute("aria-valuenow", w); r.setAttribute("aria-valuemin", SIDE_MIN); r.setAttribute("aria-valuemax", max);
+  if (save) { try { localStorage.setItem(SIDE_KEY, String(w)); } catch (e) { /* 저장할 수 없어도 동작한다 */ } }
+  return w;
+}
+(() => {
+  let saved = null;
+  try { saved = Number(localStorage.getItem(SIDE_KEY)); } catch (e) { saved = null; }
+  setSide(saved || SIDE_DEFAULT, false);
+  const r = $("resizer");
+  r.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    try { r.setPointerCapture(e.pointerId); } catch (err) { /* 포인터를 잡지 못해도 손잡이 위에서는 끌린다 */ }
+    const left = r.closest("aside").getBoundingClientRect().left;
+    r.classList.add("dragging"); document.body.classList.add("resizing");
+    const move = (ev) => setSide(ev.clientX - left, false);
+    const up = (ev) => {
+      setSide(ev.clientX - left, true);
+      r.classList.remove("dragging"); document.body.classList.remove("resizing");
+      r.removeEventListener("pointermove", move); r.removeEventListener("pointerup", up);
+    };
+    r.addEventListener("pointermove", move);
+    r.addEventListener("pointerup", up);
+  });
+  r.addEventListener("dblclick", () => setSide(SIDE_DEFAULT, true));
+  r.addEventListener("keydown", (e) => {
+    const step = e.shiftKey ? 64 : 16;
+    const now = Number(r.getAttribute("aria-valuenow"));
+    if (e.key === "ArrowLeft") { e.preventDefault(); setSide(now - step, true); }
+    if (e.key === "ArrowRight") { e.preventDefault(); setSide(now + step, true); }
+    if (e.key === "Home") { e.preventDefault(); setSide(SIDE_DEFAULT, true); }
+  });
+  window.addEventListener("resize", () => setSide(sideWant, false, true));
+})();
+
+/* 보고서 제목에 예시 값(OOO)이 남았으면 알린다. 만들기는 막지 않는다 */
+function renderPlaceholder() {
+  const names = S.info.placeholders || [];
+  $("g-placeholder").innerHTML = names.length
+    ? `<div class="note-box warning">보고서 제목에 예시 값이 남아 있습니다(${names.map(esc).join(", ")}). "바꾸기…"로 고치십시오.</div>` : "";
+}
+
+/* ---- 보고서 판 이력 ---- */
+const outHref = (rel) => "/out/" + rel.split("/").map(encodeURIComponent).join("/");
+// 출력 폴더(rel 이 빈 글) 또는 그 아래 폴더를 탐색기로 여는 링크. 누르면 서버가 연다(/api/open-folder)
+const folderLink = (rel, text) =>
+  `<a href="#" class="folder-link" data-open-folder="${esc(rel)}" title="파일 탐색기에서 열기">${esc(text)}</a>`;
+document.addEventListener("click", async (e) => {
+  const a = e.target.closest("[data-open-folder]");
+  if (!a) return;
+  e.preventDefault();
+  try {
+    await api("/api/open-folder", {path: a.dataset.openFolder});
+    toast("파일 탐색기에서 열었습니다. 작업 표시줄에서 그 창을 찾아 주십시오.");
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+function renderHistory() {
+  const vs = S.history;
+  $("g-history").hidden = !vs.length;
+  $("g-history").querySelector("h3").textContent = `판 이력 (${vs.length})`;
+  $("g-history-list").innerHTML = `<table><thead><tr><th>판</th><th>만든 때</th><th>메모</th><th>시험 기준</th><th>예외사유</th><th>지난 판 대비</th><th></th></tr></thead><tbody>`
+    + vs.slice().reverse().map((v) => {
+      const dir = "이력/" + v["폴더"] + "/";
+      const ch = v["변경"] || {};
+      // 판마다 따른 매뉴얼 판과 도구 버전. 지금 도구의 기준과 다르면 표시한다(매뉴얼 개정 전에 만든 판)
+      const ed = v["매뉴얼 판"] || "";
+      const other = ed && S.manual_edition && ed !== S.manual_edition;
+      const basis = ed ? `${esc(ed)}${v["도구 버전"] ? ` · ${esc(S.name || "SRT-ARA")} ver.${esc(v["도구 버전"])}` : ""}${other ? ' <span class="badge warn" title="지금 도구의 기준과 다릅니다">다른 기준</span>' : ""}` : "기록 없음";
+      return `<tr><td>v${v["판"]}</td><td>${esc(v["시각"])}</td><td>${esc(v["메모"] || "")}</td><td>${basis}</td><td>${v["예외사유"]}건${v["오류"] ? ` (오류 ${v["오류"]})` : ""}</td>
+        <td>추가 ${ch["추가"] ?? 0} · 변경 ${ch["변경"] ?? 0} · 삭제 ${ch["삭제"] ?? 0}</td>
+        <td><a href="${outHref(dir + "변경내역.md")}" target="_blank" rel="noopener">변경내역</a>
+          · ${folderLink(dir, "폴더")}</td></tr>`;
+    }).join("") + "</tbody></table>";
+}
+$("g-issue").addEventListener("change", () => { $("g-note").disabled = !$("g-issue").checked; if ($("g-issue").checked) $("g-note").focus(); });
+
+$("g-info").addEventListener("click", () => showInfo(false));
+
+// 트리 노드마다 그 아래 파일과 발생 위치 수를 계산해 둔다.
+function buildIndex() {
+  OCC = [];
+  S.items.forEach((item) => item.occurrences.forEach((o, n) => {
+    OCC.push({item, n, role: n === 0 ? "대표" : "동일사항 " + n, block: o.main});
+    o.refs.forEach((r) => OCC.push({item, n, role: "참조", block: r}));
+  }));
+  BY_FILE = {};
+  OCC.forEach((o) => { (BY_FILE[o.block.file] = BY_FILE[o.block.file] || []).push(o); });
+  const flagged = new Set(S.diagnostics.map((d) => d.file));
+  NODES = {};
+  const visit = (node, id, project) => {
+    node.id = id;
+    node.project = project;
+    NODES[id] = node;
+    if (node.k === "f") {
+      node.files = [node.f];
+    } else {
+      node.files = [];
+      node.c.forEach((c, i) => { visit(c, id + "/" + i, project); node.files.push(...c.files); });
+    }
+    node.count = [...new Set(node.files)].reduce((s, f) => s + (BY_FILE[f] ? BY_FILE[f].length : 0), 0);
+    node.flagged = node.files.some((f) => flagged.has(f));
+  };
+  S.tree.forEach((p, i) => visit(p, String(i), i));
+  const sig = S.inputs.join("|");
+  if (sig !== treeOf) {          // 새로 연 경우: 표기법이 있는 곳까지 펼친다
+    treeOf = sig;
+    opened.clear();
+    Object.values(NODES).forEach((n) => { if (n.k !== "f" && (n.count || n.k === "p")) opened.add(n.id); });
+    scope = null;
+  }
+}
+
+function scopeOcc() {
+  if (scope === null) return OCC;
+  const files = new Set(NODES[scope].files);
+  return OCC.filter((o) => files.has(o.block.file));
+}
+
+/* ---- 편집 값 ---- */
+// 대표 위치는 그 유형의 모든 항목을, 동일사항 위치는 위치별 항목(비고, 측정값)만 편집한다.
+function originalFields(item, n) {
+  const occ = item.occurrences[n];
+  return n === 0 ? occ.fields : occ.main.fields;
+}
+function valueOf(item, n, field) {
+  const d = (drafts[item.key] || {})[blockKey(item.occurrences[n].main)];
+  if (d && field in d) return d[field];
+  return originalFields(item, n)[field] || "";
+}
+function setValue(item, n, field, value) {
+  const bk = blockKey(item.occurrences[n].main);
+  const d = drafts[item.key] = drafts[item.key] || {};
+  const orig = originalFields(item, n)[field] || "";
+  d[bk] = d[bk] || {};
+  if (norm(value) === orig) delete d[bk][field]; else d[bk][field] = value;
+  if (!Object.keys(d[bk]).length) delete d[bk];
+  if (!Object.keys(d).length) delete drafts[item.key];
+}
+function isChanged(item, n, field) {
+  const d = (drafts[item.key] || {})[blockKey(item.occurrences[n].main)];
+  return !!d && field in d;
+}
+const isDirty = (key) => !!drafts[key];
+
+function pendingEdits(item) {
+  const d = drafts[item.key] || {};
+  const edits = [];
+  item.occurrences.forEach((occ, n) => {
+    const changes = d[blockKey(occ.main)];
+    if (!changes) return;
+    const fields = Object.assign({}, originalFields(item, n));
+    Object.entries(changes).forEach(([k, v]) => { fields[k] = v; });
+    const b = occ.main;
+    edits.push({file: b.file, sha: b.sha, test: b.test, id: b.id, index: b.index, ordinal: b.ordinal, fields});
+  });
+  return edits;
+}
+
+/* ---- 그리기 ---- */
+function diagnosticsOf(item) {
+  const tags = new Set([item.tag]);
+  item.occurrences.forEach((o) => { tags.add(o.main.tag); o.refs.forEach((r) => tags.add(r.tag)); });
+  return S.diagnostics.filter((d) => [...tags].some((t) => d.message.startsWith(t + ":") || d.message.startsWith(t + " ")));
+}
+
+const projectLabel = () => S.projects.map((p) => `${p.name} (${p.label})`).join(", ");
+
+function renderHeader() {
+  // 프로젝트 단추: 위 줄은 CSC명과 연 프로젝트, 아래 줄은 사업명 / CSCI명 (보고서 정보가 없으면 알림)
+  const open = S.inputs.length > 0;
+  $("proj-name").textContent = !open ? "프로젝트 열기" : S.info.saved ? `${S.csc} · ${projectLabel()}` : projectLabel();
+  const sub = $("proj-sub");
+  const unset = open && (!S.info.saved || !!S.info.error || (S.info.placeholders || []).length > 0);
+  sub.textContent = !open ? "" : S.info.error ? "보고서 정보 파일을 읽을 수 없습니다"
+    : !S.info.saved ? "보고서 정보를 정하십시오" : [S.project, S.csci].filter((v) => v).join(" / ");
+  sub.classList.toggle("unset", unset);
+  $("btn-proj").title = open ? `보고서 제목: ${S.heading}\n${S.inputs.join("\n")}` : "프로젝트를 엽니다";
+  renderSteps();
+}
+
+// 단계마다 상태를 숫자로 보인다: 무엇을 먼저 할지 설명 없이 알 수 있게
+function renderSteps() {
+  const open = S.inputs.length > 0;
+  const errors = S.diagnostics.filter((d) => d.level === "error").length;
+  const warnings = S.diagnostics.length - errors;
+  const badge = (id, text, cls) => { $(id).textContent = text; $(id).className = "badge" + (cls ? " " + cls : ""); };
+  badge("st-problems", !open ? "" : errors ? `오류 ${errors}` : warnings ? `경고 ${warnings}` : "✓",
+        errors ? "err" : warnings ? "warn" : "ok");
+  const pending = Object.keys(drafts).length;
+  badge("st-scope", !open ? "" : pending ? `${S.items.length}건 · 미반영 ${pending}` : `${S.items.length}건`, pending ? "warn" : "");
+  const last = S.history.length ? S.history[S.history.length - 1] : null;
+  badge("st-report", !open ? "" : last ? `v${last["판"]}` : "", "");
+  const current = view === "item" ? "scope" : view;
+  document.querySelectorAll(".step").forEach((b) => {
+    b.disabled = !open;
+    if (b.dataset.step === current && open) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current");
+  });
+}
+
+// 유형 단추의 숫자는 지금 고른 범위 안의 표기법 수(목록의 줄 수)이다.
+function renderChips() {
+  const occ = scopeOcc();
+  let html = `<button class="chip" data-filter="ALL" aria-pressed="${filter === "ALL"}">전체 ${occ.length}</button>`;
+  S.types.forEach((t) => {
+    const n = occ.filter((o) => o.item.test === t.code).length;
+    html += `<button class="chip" data-filter="${t.code}" aria-pressed="${filter === t.code}" title="주석 모양 SRT-${t.code}-ID##">${esc(t.title)} ${n}</button>`;
+  });
+  $("chips").innerHTML = html;
+}
+
+function matches(o) {
+  if (filter !== "ALL" && o.item.test !== filter) return false;
+  if (!query) return true;
+  const hay = [o.block.tag, Object.values(o.item.fields).join(" "), o.block.file, o.block.function].join(" ").toLowerCase();
+  return hay.includes(query.toLowerCase());
+}
+
+/* ---- 소스 트리 ---- */
+function nodeHtml(node, depth) {
+  if (onlyTagged && !node.count) return "";
+  const isOpen = opened.has(node.id);
+  const cls = node.k === "p" ? "proj" : node.k === "f" ? "file" : "grp";
+  const caret = node.k === "f" ? "" : (isOpen ? "▾" : "▸");
+  const kind = node.k === "p" ? `<span class="kind">${esc(S.projects[node.project].label)}</span>` : "";
+  const dirty = node.k === "f" && (BY_FILE[node.f] || []).some((o) => isDirty(o.item.key));
+  let html = `<div class="trow ${cls} ${node.count ? "" : "dim"}" role="treeitem" tabindex="0" data-node="${node.id}"
+      aria-current="${scope === node.id}" ${node.k === "f" ? "" : `aria-expanded="${isOpen}"`}
+      style="padding-left:${6 + depth * 14}px" title="${esc(node.k === "f" ? node.f : node.n)}">
+    <span class="caret" data-toggle="${node.id}">${caret}</span><span class="tname">${esc(node.n)}</span>${kind}
+    ${dirty ? '<span class="dot" title="반영하지 않은 편집"></span>' : ""}
+    ${node.count ? `<span class="badge ${node.flagged ? "warn" : ""}" title="예외사유 주석 ${node.count}곳">${node.count}</span>` : ""}</div>`;
+  if (node.k !== "f" && isOpen) node.c.forEach((c) => { html += nodeHtml(c, depth + 1); });
+  return html;
+}
+
+function renderTree() {
+  if (!S.tree.length) {
+    $("tree").innerHTML = '<div class="empty">열기를 눌러 프로젝트 파일, makefile, 폴더, 소스 파일을 고르십시오.</div>';
+    return;
+  }
+  let html = `<div class="trow proj" role="treeitem" tabindex="0" data-node="" aria-current="${scope === null}"
+      style="padding-left:6px"><span class="caret"></span><span class="tname">전체</span>
+      ${OCC.length ? `<span class="badge">${OCC.length}</span>` : ""}</div>`;
+  S.tree.forEach((p) => { html += nodeHtml(p, 0); });
+  $("tree").innerHTML = html;
+}
+
+/* ---- 범위별 주석 정보 목록 ---- */
+const brief = (text) => !text ? "(내용 없음)" : text.length > 48 ? text.slice(0, 48) + "…" : text;
+
+function renderScope() {
+  const main = $("main");
+  if (!S.tree.length) {
+    main.innerHTML = `<div class="empty"><p>연 소스가 없습니다.</p>
+      <button class="primary" data-open="1">폴더 열기</button> <button data-open-list="1">목록에서 고르기…</button></div>`
+      + (S.registry.length ? `<div class="card home"><h2>프로젝트 목록</h2>${projectListHtml()}</div>` : "");
+    return;
+  }
+  const node = scope === null ? null : NODES[scope];
+  const all = scopeOcc();
+  const rows = all.filter(matches);
+  const files = node ? new Set(node.files) : new Set(Object.values(NODES).filter((n) => n.k === "f").map((n) => n.f));
+  const tagged = [...files].filter((f) => BY_FILE[f]).length;
+  const proj = node && node.k === "p" ? S.projects[node.project] : null;
+  let meta;
+  if (!node) meta = S.projects.map((p) => `${p.name} (${p.label})`).join(", ");
+  else if (proj) meta = `${proj.label} · ${proj.origin}`;
+  else if (node.k === "f") meta = `소스 파일 · ${node.f}`;
+  else meta = `${S.projects[node.project].name} 의 묶음`;
+
+  let html = `<div class="head"><div><h2>${esc(node ? node.n : "전체")}</h2><div class="meta">${esc(meta)}</div></div></div>
+    ${errorNotice("먼저 고치면 목록과 보고서가 정확해집니다.")}
+    <div class="stats"><div class="stat"><b>${files.size}</b>소스 파일</div>
+      <div class="stat"><b>${tagged}</b>예외사유가 있는 파일</div>
+      <div class="stat"><b>${new Set(all.map((o) => o.item.key)).size}</b>예외사유(ID)</div>
+      <div class="stat"><b>${all.filter((o) => o.role !== "참조").length}</b>발생 위치</div></div>`;
+  (proj ? [proj] : node ? [] : S.projects).forEach((p) => p.warnings.forEach((w) => {
+    html += `<div class="note-box warning">${esc(p.name)} · ${esc(w)}</div>`;
+  }));
+  S.diagnostics.filter((d) => files.has(d.file)).slice(0, node && node.k === "f" ? 50 : 0).forEach((d) => {
+    html += `<div class="note-box ${d.level}">${d.level === "error" ? "오류" : "경고"} · ${d.line}행 · ${esc(d.message)}</div>`;
+  });
+
+  if (!rows.length) {
+    html += `<div class="card empty">${all.length ? "조건에 맞는 예외사유가 없습니다."
+      : "이 범위의 소스에는 예외사유 주석(SRT-…)이 없습니다."}</div>`;
+  } else {
+    html += `<div class="card"><div class="scroll-x"><table class="rows"><thead><tr><th>식별자</th><th>구분</th><th>항목</th>
+      <th>파일</th><th>줄</th><th>함수</th><th></th></tr></thead><tbody>`;
+    S.types.forEach((t) => {
+      const group = rows.filter((o) => o.item.test === t.code).sort((a, b) =>      // ID, 대표 먼저, 참조는 그 위치 뒤
+        a.item.id - b.item.id || a.n - b.n || (a.role === "참조") - (b.role === "참조") || a.block.tag_line - b.block.tag_line);
+      if (!group.length) return;
+      html += `<tr class="type-head"><td colspan="7">${esc(t.title)} · ${esc(t.report)} (${group.length})</td></tr>`;
+      group.forEach((o) => {
+        const diags = diagnosticsOf(o.item);
+        const level = diags.some((d) => d.level === "error") ? "err" : diags.length ? "warn" : "";
+        html += `<tr data-key="${esc(o.item.key)}" tabindex="0"><td class="tag">${esc(o.block.tag)}</td>
+          <td><span class="pill ${o.role === "대표" ? "rep" : ""}">${esc(o.role)}</span></td>
+          <td title="${esc(o.item.fields[SUBJECT[o.item.test]] || "")}">${esc(brief(o.item.fields[SUBJECT[o.item.test]]))}</td>
+          <td class="where">${esc(o.block.file)}</td><td class="where">${esc(o.block.lines)}</td>
+          <td class="fn" title="${esc(o.block.function)}">${esc(o.block.function || "-")}</td>
+          <td>${level ? `<span class="badge ${level}" title="점검 결과">${diags.length}</span>` : ""}
+            ${isDirty(o.item.key) ? '<span class="dot" style="display:inline-block" title="반영하지 않은 편집"></span>' : ""}</td></tr>`;
+      });
+    });
+    html += "</tbody></table></div></div>";
+  }
+  if (S.items.length) html += `<div class="next-step"><span class="hint">예외사유를 눌러 내용을 고치고 소스에 반영한 뒤</span>
+    <button data-go="report">다음: 3 보고서 만들기 ›</button></div>`;
+  main.innerHTML = html;
+}
+
+/* ---- 점검 결과: 잘못 쓴 표기법을 모아 보고 고친다 ---- */
+let fixing = null;            // 고치는 중인 주석 ("파일|순번")
+const fixDrafts = {};         // 주석별로 고치던 글
+
+// 같은 주석에서 나온 문제를 한 묶음으로 만든다. 오류가 있는 묶음을 앞에 둔다.
+function problemGroups() {
+  const groups = [];
+  const index = {};
+  S.diagnostics.forEach((d) => {
+    const key = d.comment ? d.file + "|" + d.comment.cid : d.file + "|L" + d.line + "|" + groups.length;
+    if (!(key in index)) { index[key] = groups.length; groups.push({key, file: d.file, line: d.line, sha: d.sha, comment: d.comment, list: []}); }
+    groups[index[key]].list.push(d);
+  });
+  const rank = (g) => (g.list.some((d) => d.level === "error") ? 0 : 1);
+  return groups.sort((a, b) => rank(a) - rank(b) || a.file.localeCompare(b.file) || a.line - b.line);
+}
+
+function contextHtml(lines) {
+  return lines.length ? `<pre class="ctx">${lines.map(([n, t]) => `<span class="ln">${n}</span>${esc(t)}`).join("\n")}</pre>` : "";
+}
+
+function renderProblems() {
+  const groups = problemGroups();
+  const errors = S.diagnostics.filter((d) => d.level === "error").length;
+  let html = `<div class="head"><div><h2 style="font-family:inherit">1 잘못 쓴 주석 고치기</h2>
+      <div class="meta">오류 ${errors}건 · 경고 ${S.diagnostics.length - errors}건. 저절로 고치지 않습니다: 고친 주석은 "소스에 반영"을 눌러야 소스에 저장되고, 그러면 목록에서 사라집니다.</div></div></div>`;
+  if (!groups.length) html += '<div class="card empty">잘못 쓴 주석이 없습니다.</div>';
+  // 오류가 없으면 다음 단계로 안내한다 (경고만 남은 경우도 넘어갈 수 있다)
+  if (!errors) html += `<div class="next-step"><span class="hint">${S.diagnostics.length ? "경고는 보고서를 막지 않습니다." : ""}</span>
+    <button class="primary" data-go="scope">다음: 2 예외사유 검토·편집 ›</button></div>`;
+  groups.forEach((g) => {
+    const items = [...new Set(g.list.map((d) => d.item).filter((k) => k && itemOf(k)))];
+    const open = fixing === g.key && g.comment;
+    html += `<div class="card problem" data-group="${esc(g.key)}"><div class="phead"><span class="mono">${esc(g.file)}:${g.line}</span>
+        <span class="spacer"></span>
+        ${items.map((k) => `<button data-item="${esc(k)}">${esc(itemOf(k).tag)} 내용 편집</button>`).join("")}
+        ${g.comment ? `<button data-fix="${esc(g.key)}" class="${open ? "" : "primary"}">${open ? "닫기" : "주석 고치기"}</button>` : ""}</div>`;
+    g.list.forEach((d) => {
+      html += `<div class="pmsg"><span class="badge ${d.level === "error" ? "err" : "warn"}">${d.level === "error" ? "오류" : "경고"}</span>
+        <span>${esc(d.message)}</span></div>`;
+    });
+    if (open) {
+      const c = g.comment;
+      const text = g.key in fixDrafts ? fixDrafts[g.key] : c.raw;
+      const suggestions = [];
+      g.list.forEach((d) => d.suggest.forEach(([from, to]) => {
+        if (!suggestions.some((x) => x[0] === from)) suggestions.push([from, to]);
+      }));
+      html += `<div class="fixbox">${contextHtml(c.before)}
+        <textarea class="fix mono" data-fixtext="${esc(g.key)}" rows="${Math.max(2, text.split("\n").length)}" spellcheck="false" aria-label="주석 원문">${esc(text)}</textarea>
+        ${contextHtml(c.after)}
+        ${suggestions.length ? `<div class="sugg">제안: ${suggestions.map(([from, to]) =>
+          `<button data-sugg-from="${esc(from)}" data-sugg-to="${esc(to)}"><code>${esc(from)}</code> → <code>${esc(to)}</code></button>`).join(" ")}</div>` : ""}
+        <div class="savebar" style="position:static;margin-top:10px"><span class="hint">주석 기호(/* */, //)를 포함해 주석 전체를 고칩니다.
+          주석 밖의 코드가 달라지면 반영하지 않습니다. 모두 지우고 반영하면 주석이 없어집니다.</span>
+          <button data-fix-reset="${esc(g.key)}">원래대로</button>
+          <button data-fix-save="${esc(g.key)}" class="primary">소스에 반영</button></div></div>`;
+    }
+    html += "</div>";
+  });
+  $("main").innerHTML = html;
+  $("main").querySelectorAll("textarea").forEach(grow);
+}
+
+async function saveFix(key) {
+  const g = problemGroups().find((x) => x.key === key);
+  const box = document.querySelector(`[data-fixtext="${CSS.escape(key)}"]`);
+  if (!g || !box) return;
+  fixDrafts[key] = box.value;
+  try {
+    await api("/api/fix", {file: g.file, sha: g.sha, cid: g.comment.cid, before: g.comment.raw, text: box.value});
+    delete fixDrafts[key];
+    fixing = null;
+    renderMain();
+    toast(`${g.file} 에 반영했습니다.`);
+  } catch (err) { toast(err.message, true); }
+}
+
+/* ---- 근거자료: 그림과 다이어그램 ---- */
+// @첨부 의 값은 "경로|캡션; 경로|캡션" 이다. 화면에서는 목록으로 다룬다.
+let attachVersion = 0;        // 그림을 다시 저장했을 때 화면의 그림을 새로 읽게 한다
+const diagramCode = {};       // "파일|경로" -> Mermaid 코드 (다이어그램으로 만든 그림만)
+
+const parseAttach = (value) => value.split(/[;\n]/).map((e) => e.trim()).filter(Boolean).map((e) => {
+  const i = e.indexOf("|");
+  return i < 0 ? {path: e, caption: ""} : {path: e.slice(0, i).trim(), caption: e.slice(i + 1).trim()};
+});
+const cleanCaption = (text) => text.replace(/[;|{}\n]/g, " ").replace(/\s+/g, " ");
+const serializeAttach = (list) => list.map((a) => a.caption.trim() ? `${a.path}|${a.caption.trim()}` : a.path).join("; ");
+const attachUrl = (file, path) => `/api/attachment?file=${encodeURIComponent(file)}&path=${encodeURIComponent(path)}&v=${attachVersion}`;
+
+function attachList(item) { return parseAttach(valueOf(item, 0, "첨부")); }
+function setAttachList(item, list) { setValue(item, 0, "첨부", serializeAttach(list)); }
+
+function attachCard(item) {
+  const rep = item.occurrences[0].main;
+  const list = attachList(item);
+  const off = rep.editable ? "" : "disabled";
+  let html = `<div class="card ${isChanged(item, 0, "첨부") ? "att-changed" : ""}"><h3>근거자료 (그림·다이어그램)</h3>`;
+  list.forEach((a, i) => {
+    html += `<div class="att" data-att="${i}"><div class="thumb"><img src="${attachUrl(rep.file, a.path)}" alt=""
+          onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'파일 없음'}))"></div>
+      <div class="att-body"><div class="mono att-path">${esc(a.path)}</div>
+        <input type="text" data-att-cap="${i}" value="${esc(a.caption)}" placeholder="그림 설명 (캡션)" aria-label="그림 설명" ${off}></div>
+      <div class="att-btns"><button data-att-edit="${i}" hidden ${off}>다이어그램 고치기</button>
+        <button data-att-move="${i}" data-dir="-1" ${off || (i === 0 ? "disabled" : "")} title="위로">↑</button>
+        <button data-att-move="${i}" data-dir="1" ${off || (i === list.length - 1 ? "disabled" : "")} title="아래로">↓</button>
+        <button data-att-del="${i}" ${off}>빼기</button></div></div>`;
+  });
+  if (!list.length) html += '<div class="help" style="margin-bottom:10px">넣은 그림이 없습니다.</div>';
+  html += `<div class="att-add"><button id="att-image" ${off}>그림 파일 추가</button>
+      <button id="att-diagram" ${off || (S.mermaid ? "" : "disabled")} title="${S.mermaid ? "Mermaid 로 순서도 등을 그립니다" : "Mermaid 파일이 없어 쓸 수 없습니다 (THIRD_PARTY.md)"}">다이어그램 추가</button>
+      <input type="file" id="att-file" accept="image/png,image/jpeg,image/gif,image/bmp" multiple hidden></div>
+    <div class="help">그림은 소스 파일 옆의 <code>srt_attach</code> 폴더에 저장되고 주석에는 <code>@첨부</code>로 경로만 적힙니다.
+      "소스에 반영"을 눌러야 보고서에 들어갑니다.</div></div>`;
+  return html;
+}
+
+// 다이어그램으로 만든 그림(.png 옆에 같은 이름의 .mmd 가 있음)에만 "고치기" 단추를 보인다.
+function markDiagrams(item) {
+  const file = item.occurrences[0].main.file;
+  attachList(item).forEach((a, i) => {
+    if (!/^srt_attach\/.*\.png$/i.test(a.path)) return;      // 다이어그램은 srt_attach 에만 저장된다
+    const key = file + "|" + a.path;
+    const show = () => { const b = document.querySelector(`[data-att-edit="${i}"]`); if (b && key in diagramCode && diagramCode[key] !== null) b.hidden = false; };
+    if (key in diagramCode) { show(); return; }
+    fetch(attachUrl(file, a.path.replace(/\.png$/i, ".mmd"))).then((r) => (r.ok ? r.text() : null))
+      .then((code) => { diagramCode[key] = code; show(); }).catch(() => {});
+  });
+}
+
+const toBase64 = (buffer) => { let s = ""; new Uint8Array(buffer).forEach((b) => { s += String.fromCharCode(b); }); return btoa(s); };
+
+async function addImages(item, files) {
+  const rep = item.occurrences[0].main;
+  const list = attachList(item);
+  for (const f of files) {
+    try {
+      const res = await api("/api/attach", {file: rep.file, name: `${item.tag}_${f.name}`, data: toBase64(await f.arrayBuffer())});
+      if (!list.some((a) => a.path === res.path)) list.push({path: res.path, caption: ""});
+    } catch (err) { toast(`${f.name}: ${err.message}`, true); }
+  }
+  setAttachList(item, list);
+  renderTree(); renderMain();
+}
+
+/* 다이어그램: Mermaid 코드를 브라우저에서 그림(PNG)으로 바꿔 저장한다. */
+let mermaidReady = null;
+let diagramTarget = null;     // {item key, 목록에서의 순번(새로 넣으면 -1)}
+let diagramSvg = "";
+let diagramSeq = 0;
+const SAMPLES = {
+  flowchart: "flowchart TD\n  A[전원 인가] --> B{모드 수신?}\n  B -- 아니오 --> C[1초 대기]\n  C --> B\n  B -- 예 --> D[모드 처리]",
+  sequence: "sequenceDiagram\n  participant 운용자\n  participant 장치\n  운용자->>장치: 모드 선택\n  장치-->>운용자: 응답",
+  state: "stateDiagram-v2\n  [*] --> 대기\n  대기 --> 동작: 모드 수신\n  동작 --> 대기: 완료",
+};
+
+function loadMermaid() {
+  if (!mermaidReady) {
+    mermaidReady = new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "/vendor/mermaid.min.js";
+      s.onload = () => {
+        // 글자를 SVG 글자로 그려야(htmlLabels: false) 그림 파일로 바꿀 수 있다. 선 위 글자의 바탕은 불투명하게 한다.
+        window.mermaid.initialize({startOnLoad: false, securityLevel: "strict", theme: "neutral", htmlLabels: false,
+          flowchart: {htmlLabels: false, useMaxWidth: false}, sequence: {useMaxWidth: false}, state: {useMaxWidth: false},
+          fontFamily: '"Malgun Gothic", "맑은 고딕", sans-serif',
+          themeCSS: ".edgeLabel rect, .labelBkg { fill: #fff !important; opacity: 1 !important; }"});
+        resolve(window.mermaid);
+      };
+      s.onerror = () => { mermaidReady = null; reject(new Error("Mermaid 파일을 읽지 못했습니다.")); };
+      document.head.appendChild(s);
+    });
+  }
+  return mermaidReady;
+}
+
+async function drawDiagram() {
+  const code = $("d-code").value.trim();
+  diagramSvg = "";
+  $("d-save").disabled = true;
+  if (!code) { $("d-preview").textContent = "코드를 입력하면 여기에 그림이 나옵니다."; $("d-error").textContent = ""; return; }
+  const id = "srtdiagram" + (++diagramSeq);
+  try {
+    const mermaid = await loadMermaid();
+    await mermaid.parse(code);
+    const {svg} = await mermaid.render(id, code);
+    if (id !== "srtdiagram" + diagramSeq) return;       // 그 사이에 다시 입력했으면 버린다
+    diagramSvg = svg;
+    $("d-preview").innerHTML = svg;
+    $("d-error").textContent = "";
+    $("d-save").disabled = false;
+  } catch (err) {
+    const stray = document.getElementById("d" + id) || document.getElementById(id);
+    if (stray) stray.remove();
+    $("d-error").textContent = "그릴 수 없습니다: " + String(err.message || err).split("\n").slice(0, 3).join(" ");
+  }
+}
+
+// SVG 를 2배 크기의 PNG 로 바꾼다 (보고서에서는 해상도 정보로 원래 크기에 그린다).
+async function svgToPng(svg) {
+  const el = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
+  const box = (el.getAttribute("viewBox") || "").split(/[\s,]+/).map(Number);
+  const w = Math.ceil(box[2] || parseFloat(el.getAttribute("width")) || 600);
+  const h = Math.ceil(box[3] || parseFloat(el.getAttribute("height")) || 400);
+  el.setAttribute("width", w); el.setAttribute("height", h); el.removeAttribute("style");
+  const img = new Image();
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(el));
+  await img.decode();
+  const canvas = document.createElement("canvas");
+  canvas.width = w * 2; canvas.height = h * 2;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/png").split(",")[1];
+}
+
+function openDiagram(item, index) {
+  const rep = item.occurrences[0].main;
+  const entry = index >= 0 ? attachList(item)[index] : null;
+  diagramTarget = {key: item.key, index};
+  $("d-code").value = entry ? (diagramCode[rep.file + "|" + entry.path] || "") : SAMPLES.flowchart;
+  $("d-caption").value = entry ? entry.caption : "";
+  $("d-sample").value = "";
+  $("dlg-diagram").showModal();
+  drawDiagram();
+}
+
+async function saveDiagram() {
+  const item = itemOf(diagramTarget.key);
+  if (!item || !diagramSvg) return;
+  const rep = item.occurrences[0].main;
+  const list = attachList(item);
+  const code = $("d-code").value.trim();
+  const editing = diagramTarget.index >= 0 ? list[diagramTarget.index] : null;
+  let n = 1;
+  while (list.some((a) => a.path.endsWith(`_diagram${n}.png`))) n++;
+  const stem = editing ? editing.path.split("/").pop().replace(/\.png$/i, "") : `${item.tag}_diagram${n}`;
+  $("d-save").disabled = true;
+  try {
+    const png = await svgToPng(diagramSvg);
+    const res = await api("/api/attach", {file: rep.file, name: stem + ".png", data: png, dpi: 192, overwrite: !!editing});
+    const source = btoa(unescape(encodeURIComponent(code + "\n")));
+    await api("/api/attach", {file: rep.file, name: res.path.split("/").pop().replace(/\.png$/i, ".mmd"), data: source, overwrite: true});
+    diagramCode[rep.file + "|" + res.path] = code;
+    const caption = cleanCaption($("d-caption").value);
+    if (editing) { editing.path = res.path; editing.caption = caption; } else list.push({path: res.path, caption});
+    attachVersion++;
+    setAttachList(item, list);
+    $("dlg-diagram").close();
+    renderTree(); renderMain();
+    toast(editing ? "다이어그램을 다시 저장했습니다." : "다이어그램을 넣었습니다. \"소스에 반영\"을 눌러야 보고서에 들어갑니다.");
+  } catch (err) {
+    $("d-error").textContent = err.message;
+    $("d-save").disabled = false;
+  }
+}
+
+function codeBox(b, isRef) {
+  const body = b.code.map(([n, t]) => `<span class="ln">${n}</span>${esc(t)}`).join("\n");
+  return `<div class="codebox"><div class="cap"><b>${isRef ? "참조 " : ""}${esc(b.tag)}</b>
+    <span>${esc(b.file)}</span>${b.function ? `<span>${esc(b.function)}</span>` : ""}<span>Line ${esc(b.lines)}</span></div>
+    <pre>${body}</pre></div>`;
+}
+
+// 규칙 번호 -> 규칙명 목록이 있는 코딩 규칙 기준이면 "번호: 규칙명" 선택지를 만든다.
+const plainName = (s) => s.replace(/[\s\-_.]+/g, "").toLowerCase();
+function ruleTitles(standard) {
+  const key = Object.keys(S.rule_titles || {}).find((k) => plainName(k) === plainName(standard || ""));
+  return key ? S.rule_titles[key] : {};
+}
+// 선택지 순서: 도구에 든 목록의 순서(Java 절 1, 1.1, 1.2, 2 …)를 먼저 따르고, 나머지(소스에 적힌 것, 직접 넣은 것)를 뒤에 둔다
+function ruleChoices(standard) {
+  const titles = ruleTitles(standard);
+  const ref = (S.reference_lists || []).find((l) => plainName(l.name) === plainName(standard || ""));
+  const first = ref ? ref.rules.map(([id]) => id).filter((id) => id in titles) : [];
+  const seen = new Set(first);
+  return [...first, ...Object.keys(titles).filter((id) => !seen.has(id))].map((id) => `${id}: ${titles[id]}`);
+}
+
+function fillRuleName(item, title) {
+  const name = $("f-FA내용");
+  name.value = title;
+  setValue(item, 0, "FA내용", title);
+  name.closest(".field").classList.toggle("changed", isChanged(item, 0, "FA내용"));
+  name.closest(".field").classList.remove("missing");
+  grow(name);
+}
+
+// 규칙 번호는 적었는데 규칙명이 비어 있고, 목록에서 그 번호를 찾을 수 있으면 채우기 단추를 내놓는다.
+function updateNameHint(item) {
+  const hint = $("name-hint");
+  if (!hint) return;
+  const title = ruleTitles(valueOf(item, 0, "기준"))[valueOf(item, 0, "규칙").trim()];
+  const empty = !norm(valueOf(item, 0, "FA내용"));
+  hint.innerHTML = title && empty && item.occurrences[0].main.editable
+    ? `<button data-fill-name="${esc(title)}">규칙명 채우기</button> <span>${esc(title)}</span>` : "";
+}
+
+function renderEdit(item) {
+  const type = typeOf(item.test);
+  const rep = item.occurrences[0];
+  const shared = type.fields.filter((f) => !f.per_occurrence);
+  const perOcc = type.fields.filter((f) => f.per_occurrence);
+  let html = "";
+
+  diagnosticsOf(item).forEach((d) => {
+    html += `<div class="note-box ${d.level}">${d.level === "error" ? "오류" : "경고"} · ${esc(d.file)}:${d.line} · ${esc(d.message)}
+      ${d.comment ? `<button class="linkish" data-goto-fix="${esc(d.file + "|" + d.comment.cid)}">주석 원문 고치기</button>` : ""}</div>`;
+  });
+  if (!rep.main.editable) {
+    html += '<div class="note-box error">이 예외사유는 주석이 닫히지 않아 화면에서 편집할 수 없습니다. 소스에서 먼저 고치십시오.</div>';
+  }
+
+  html += '<div class="card"><h3>예외사유 내용</h3>';
+  shared.forEach((f) => {
+    if (f.key === "첨부") return;          // 아래 '근거자료' 묶음에서 다룬다
+    const v = valueOf(item, 0, f.key);
+    const cls = ["field", f.required && !norm(v) ? "missing" : "", isChanged(item, 0, f.key) ? "changed" : ""].join(" ");
+    const off = rep.main.editable ? "" : "disabled";
+    // 시험 기준에 값이 정해져 있는 항목은 목록에서 고를 수 있다 (다른 값도 쓸 수 있다)
+    // 코딩규칙의 규칙 번호는 고른 기준에 규칙 목록이 있으면(MISRA 밖의 기준) 그 목록에서 고른다
+    const ruleField = item.test === "S-C" && f.key === "규칙";
+    const choices = ruleField ? ruleChoices(valueOf(item, 0, "기준")) : f.choices;
+    const derived = (item.derived || {})[f.key];
+    const input = f.choices.length || ruleField
+      ? `<input type="text" id="f-${esc(f.key)}" data-occ="0" data-field="${esc(f.key)}" list="dl-${esc(f.key)}" value="${esc(v)}"
+           placeholder="${ruleField ? "규칙 번호" : "목록에서 고르거나 직접 입력"}" autocomplete="off" ${off}>
+         <datalist id="dl-${esc(f.key)}">${choices.map((c) => `<option value="${esc(c)}">`).join("")}</datalist>`
+      : `<textarea id="f-${esc(f.key)}" data-occ="0" data-field="${esc(f.key)}" rows="1" ${off}
+           placeholder="${derived ? esc("비워 두면: " + derived) : ""}">${esc(v)}</textarea>`;
+    html += `<div class="${cls}"><label for="f-${esc(f.key)}">${esc(f.key)}${f.required ? '<span class="req" title="필수">*</span>' : ""}
+        <span class="key">@${esc(f.key)}</span></label>
+      <div>${input}${item.test === "S-C" && f.key === "FA내용" ? '<div id="name-hint" class="namehint"></div>' : ""}
+        <div class="help">${esc(f.help)}${f.choices.length ? " · 시험 기준의 값 " + f.choices.length + "개 중에서 고를 수 있음" : ""}${
+          ruleField ? ' · 고를 번호가 없으면 위의 "규칙 목록"에 넣어 둘 수 있음' : ""}</div></div></div>`;
+  });
+  html += "</div>";
+  html += attachCard(item);
+
+  html += '<div class="card"><h3>코드내용</h3>' + codeBox(rep.main, false)
+    + rep.refs.map((r) => codeBox(r, true)).join("") + "</div>";
+
+  html += `<div class="card"><h3>발생 위치 ${item.count}곳</h3><div class="scroll-x"><table class="occ"><thead><tr>
+    <th>구분</th><th>파일</th><th>줄</th><th>함수</th>${perOcc.map((f) => `<th>${esc(f.key)}</th>`).join("")}</tr></thead><tbody>`;
+  item.occurrences.forEach((occ, n) => {
+    const b = occ.main;
+    html += `<tr><td><span class="pill ${n === 0 ? "rep" : ""}">${n === 0 ? "대표" : "동일사항 " + n}</span></td>
+      <td class="mono">${esc(b.file)}</td><td class="mono">${esc(b.lines)}</td><td class="fn" title="${esc(b.function)}">${esc(b.function || "-")}</td>`;
+    perOcc.forEach((f) => {
+      html += `<td class="${isChanged(item, n, f.key) ? "changed" : ""}"><input type="text" data-occ="${n}" data-field="${esc(f.key)}"
+        value="${esc(valueOf(item, n, f.key))}" aria-label="${esc(f.key)}" ${b.editable ? "" : "disabled"}></td>`;
+    });
+    html += "</tr>";
+  });
+  html += "</tbody></table></div></div>";
+
+  html += `<div class="savebar"><span class="hint">소스 파일의 예외사유 주석만 고칩니다. 저장 전에 코드가 달라지지 않았는지 검증합니다.</span>
+    <button id="btn-revert" ${isDirty(item.key) ? "" : "disabled"}>편집 취소</button>
+    <button id="btn-save" class="primary" ${isDirty(item.key) ? "" : "disabled"}>소스에 반영</button></div>`;
+  return html;
+}
+
+function renderMain() {
+  const report = view === "report" && S.inputs.length > 0;
+  $("main").hidden = report;
+  $("report").hidden = !report;
+  if (report) renderReport();
+  else {
+    const item = view === "item" && selected && itemOf(selected);
+    if (view === "problems") renderProblems();
+    else if (item) renderItem(item);
+    else { view = "scope"; renderScope(); }
+  }
+  renderSteps();
+}
+
+// 단계로 옮겨 간다 (위쪽 단계 단추, 화면 안의 "다음" 단추)
+function goStep(step) {
+  if (!S.inputs.length) return;
+  if (step === "report" && view !== "report") prepareReport();
+  view = step;
+  renderMain();
+  (step === "report" ? $("report") : $("main")).scrollTop = 0;
+}
+document.querySelector(".steps").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-step]");
+  if (b) goStep(b.dataset.step);
+});
+
+// 오류가 남아 있으면 다른 단계에서도 알린다(막지는 않는다)
+function errorNotice(where) {
+  const errors = S.diagnostics.filter((d) => d.level === "error").length;
+  if (!errors) return "";
+  return `<div class="note-box error">잘못 쓴 주석의 오류가 ${errors}건 있습니다. ${where}
+    <button type="button" data-go="problems">1 잘못 쓴 주석 고치기로</button></div>`;
+}
+
+function renderItem(item) {
+  const main = $("main");
+  const type = typeOf(item.test);
+  const rep = item.occurrences[0].main;
+  const from = scope === null ? "전체" : NODES[scope].n;
+  main.innerHTML = `<button class="back" data-back="1">← ${esc(from)} 목록으로</button>
+    <div class="head"><div><h2>${esc(item.tag)}</h2>
+      <div class="meta">${esc(type.title)} · ${esc(type.report)} · ${esc(rep.file)}:${esc(rep.lines)}</div></div></div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="edit" aria-selected="${tab === "edit"}">편집</button>
+      <button class="tab" role="tab" data-tab="preview" aria-selected="${tab === "preview"}">양식 미리보기</button></div>
+    <div id="pane"></div>`;
+  if (tab === "edit") {
+    $("pane").innerHTML = renderEdit(item);
+    main.querySelectorAll("textarea").forEach(grow);
+    markDiagrams(item);
+    updateNameHint(item);
+  } else {
+    $("pane").innerHTML = (isDirty(item.key)
+      ? '<div class="note-box warning">반영하지 않은 편집 내용은 미리보기에 나오지 않습니다.</div>' : "")
+      + '<div class="paper" id="paper">불러오는 중…</div>';
+    fetch("/api/preview?key=" + encodeURIComponent(item.key)).then((r) => r.text())
+      .then((h) => { if ($("paper")) $("paper").innerHTML = h; });
+  }
+}
+
+// 내용 높이에 맞춘다. field-sizing 을 지원하는 브라우저는 CSS 가 알아서 한다.
+const AUTO_SIZE = CSS.supports("field-sizing", "content");
+function grow(el) {
+  if (AUTO_SIZE) return;
+  el.style.height = "auto";
+  el.style.height = (el.scrollHeight + 2) + "px";
+}
+new ResizeObserver(() => document.querySelectorAll("#main textarea").forEach(grow)).observe($("main"));
+
+function render() { renderHeader(); renderChips(); renderTree(); renderMain(); }
+
+/* ---- 동작 ---- */
+$("chips").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-filter]");
+  if (b) { filter = b.dataset.filter; view = "scope"; renderChips(); renderMain(); }
+});
+$("search").addEventListener("input", (e) => { query = e.target.value.trim(); view = "scope"; renderMain(); });
+$("only-tagged").addEventListener("change", (e) => { onlyTagged = e.target.checked; renderTree(); });
+
+// 트리: 화살표를 누르면 펼치고 접는다. 이름을 누르면 그 범위의 주석 정보를 나열한다.
+function pickNode(e) {
+  const toggle = e.target.closest("[data-toggle]");
+  const row = e.target.closest("[data-node]");
+  if (!row) return;
+  const id = row.dataset.node;
+  const node = id === "" ? null : NODES[id];
+  if (toggle && node && node.k !== "f") {
+    if (opened.has(id)) opened.delete(id); else opened.add(id);
+    renderTree();
+    return;
+  }
+  if (node && node.k !== "f") opened.add(id);
+  scope = node ? id : null;
+  view = "scope";
+  renderChips(); renderTree(); renderMain();
+  $("main").scrollTop = 0;
+}
+$("tree").addEventListener("click", pickNode);
+$("tree").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickNode(e); } });
+
+function openItem(key) {
+  selected = key; view = "item"; tab = "edit";
+  renderMain();
+  $("main").scrollTop = 0;
+}
+$("main").addEventListener("keydown", (e) => {
+  const row = e.target.closest("tr[data-key]");
+  if (row && e.key === "Enter") openItem(row.dataset.key);
+});
+
+$("main").addEventListener("input", (e) => {
+  const el = e.target;
+  if (!el.dataset) return;
+  if (el.dataset.fixtext) { fixDrafts[el.dataset.fixtext] = el.value; grow(el); return; }
+  if (el.dataset.attCap !== undefined) {              // 그림 설명
+    const item = itemOf(selected);
+    const list = attachList(item);
+    list[Number(el.dataset.attCap)].caption = cleanCaption(el.value);
+    setAttachList(item, list);
+    $("btn-save").disabled = $("btn-revert").disabled = !isDirty(item.key);
+    renderTree();
+    renderSteps();
+    return;
+  }
+  if (!el.dataset.field) return;
+  const item = itemOf(selected);
+  if (item.test === "S-C" && el.dataset.field === "기준") {          // 기준을 바꾸면 규칙 번호 선택지도 바뀐다
+    const list = $("dl-규칙");
+    if (list) list.innerHTML = ruleChoices(el.value).map((c) => `<option value="${esc(c)}">`).join("");
+  }
+  if (item.test === "S-C" && el.dataset.field === "규칙") {
+    // 목록에서 "번호: 규칙명"을 고르면 번호만 남기고, 규칙명은 FA내용이 비어 있을 때 채운다
+    const titles = ruleTitles(valueOf(item, 0, "기준"));
+    const id = Object.keys(titles).find((k) => `${k}: ${titles[k]}` === el.value);
+    if (id) {
+      el.value = id;
+      if (!$("f-FA내용").value.trim()) fillRuleName(item, titles[id]);
+    }
+  }
+  setValue(item, Number(el.dataset.occ), el.dataset.field, el.value);
+  if (item.test === "S-C") updateNameHint(item);
+  if (el.tagName === "TEXTAREA") grow(el);
+  const changed = isChanged(item, Number(el.dataset.occ), el.dataset.field);
+  (el.closest(".field") || el.closest("td")).classList.toggle("changed", changed);
+  $("btn-save").disabled = $("btn-revert").disabled = !isDirty(item.key);
+  renderTree();
+  renderSteps();
+});
+
+$("main").addEventListener("click", async (e) => {
+  if (e.target.closest("[data-open]")) { pickFolder(); return; }
+  if (e.target.closest("[data-open-list]")) { showOpen(); return; }
+  if (await projectAction(e)) return;
+  if (e.target.closest("[data-back]")) { view = "scope"; renderMain(); return; }
+  if (e.target.closest("[data-go]")) { goStep(e.target.closest("[data-go]").dataset.go); return; }
+  const row = e.target.closest("tr[data-key]");
+  if (row) { openItem(row.dataset.key); return; }
+  const t = e.target.closest("[data-tab]");
+  if (t) { tab = t.dataset.tab; renderMain(); return; }
+
+  // 점검 결과 화면
+  const hit = (name) => e.target.closest(`[data-${name}]`);
+  if (hit("goto-fix")) { fixing = hit("goto-fix").dataset.gotoFix; view = "problems"; renderMain(); return; }
+  if (hit("item") && view === "problems") { openItem(hit("item").dataset.item); return; }
+  if (hit("fix")) { fixing = fixing === hit("fix").dataset.fix ? null : hit("fix").dataset.fix; renderMain(); return; }
+  if (hit("fix-reset")) { delete fixDrafts[hit("fix-reset").dataset.fixReset]; renderMain(); return; }
+  if (hit("fix-save")) { saveFix(hit("fix-save").dataset.fixSave); return; }
+  if (hit("sugg-from")) {
+    const box = e.target.closest(".fixbox").querySelector("textarea");
+    box.value = box.value.replace(hit("sugg-from").dataset.suggFrom, hit("sugg-from").dataset.suggTo);
+    fixDrafts[box.dataset.fixtext] = box.value;
+    return;
+  }
+
+  const item = view === "item" && itemOf(selected);
+  if (!item) return;
+
+  if (hit("fill-name")) {
+    fillRuleName(item, hit("fill-name").dataset.fillName);
+    updateNameHint(item);
+    $("btn-save").disabled = $("btn-revert").disabled = !isDirty(item.key);
+    renderTree();
+    renderSteps();
+    return;
+  }
+
+  // 근거자료
+  if (e.target.id === "att-image") { $("att-file").click(); return; }
+  if (e.target.id === "att-diagram") { openDiagram(item, -1); return; }
+  if (hit("att-edit")) { openDiagram(item, Number(hit("att-edit").dataset.attEdit)); return; }
+  if (hit("att-del") || hit("att-move")) {
+    const list = attachList(item);
+    if (hit("att-del")) list.splice(Number(hit("att-del").dataset.attDel), 1);
+    else {
+      const i = Number(hit("att-move").dataset.attMove), j = i + Number(hit("att-move").dataset.dir);
+      [list[i], list[j]] = [list[j], list[i]];
+    }
+    setAttachList(item, list);
+    renderTree(); renderMain();
+    return;
+  }
+
+  if (e.target.id === "btn-revert") { delete drafts[item.key]; renderTree(); renderMain(); return; }
+  if (e.target.id === "btn-save") {
+    const edits = pendingEdits(item);
+    e.target.disabled = true;
+    const key = item.key;
+    const backup = drafts[key];
+    delete drafts[key];                   // 성공하면 새로 읽은 소스가 원본이 된다
+    try {
+      const res = await api("/api/save", {edits});
+      toast(res.saved.join(", ") + " 에 반영했습니다.");
+    } catch (err) {
+      if (itemOf(key)) drafts[key] = backup;   // 실패하면 편집 내용을 되살린다
+      render();
+      toast(err.message, true);
+    }
+  }
+});
+
+$("main").addEventListener("change", (e) => {
+  if (e.target.id !== "att-file" || !e.target.files.length) return;
+  const item = view === "item" && itemOf(selected);
+  if (item) addImages(item, [...e.target.files]);
+});
+
+let drawTimer = null;
+$("d-code").addEventListener("input", () => { clearTimeout(drawTimer); drawTimer = setTimeout(drawDiagram, 400); });
+$("d-sample").addEventListener("change", (e) => {
+  if (SAMPLES[e.target.value]) { $("d-code").value = SAMPLES[e.target.value]; drawDiagram(); }
+  e.target.value = "";
+});
+$("d-save").addEventListener("click", saveDiagram);
+
+/* ---- 규칙 목록: 사용자가 넣는 규칙 번호와 규칙명 ---- */
+// 도구에 든 목록의 규칙은 [번호, 이름] 쌍의 배열이다(순서를 지키려고).
+// 고르는 칸의 값: 코딩 규칙 기준은 이름 그대로, 취약점 목록(CWE 등)은 "ref:" + 이름 (보기만 한다)
+const refList = (name) => (S.reference_lists || []).find((l) => l.name === name);
+
+function showRules() {
+  const standards = typeOf("S-C").fields.find((f) => f.key === "기준").choices;
+  const names = [...standards, ...Object.keys(S.user_rules).filter((k) => !standards.includes(k))];
+  const weak = (S.reference_lists || []).filter((l) => l.group !== "코딩규칙 검증");
+  const current = $("r-standard").value;
+  $("r-standard").innerHTML = `<optgroup label="코딩규칙 검증 기준">${names.map((n) => {
+      const ref = refList(n);
+      const builtin = (ref?.rules || []).length;
+      const mine = Object.keys(S.user_rules[n] || {}).length;
+      const version = ref?.version || (S.user_rule_info || {})[n]?.["버전"] || "";
+      const parts = [version, builtin && `목록 ${builtin}개`, mine && `넣은 규칙 ${mine}개`].filter(Boolean);
+      return `<option value="${esc(n)}">${esc(n)}${parts.length ? ` (${parts.join(", ")})` : ""}</option>`;
+    }).join("")}</optgroup>`
+    + (weak.length ? `<optgroup label="취약점 점검">${weak.map((l) =>
+      `<option value="ref:${esc(l.name)}">${esc(l.name)} (${l.version ? esc(l.version) + ", " : ""}목록 ${l.rules.length}개)</option>`).join("")}</optgroup>` : "");
+  if ([...$("r-standard").options].some((o) => o.value === current)) $("r-standard").value = current;
+  $("r-path").textContent = `이 PC의 ${S.rules_path} 에 저장됩니다. 다른 PC에서도 쓰려면 이 파일을 옮기십시오.`;
+  loadRules();
+  if (!$("dlg-rules").open) $("dlg-rules").showModal();
+}
+
+function loadRules() {
+  const value = $("r-standard").value;
+  const isRef = value.startsWith("ref:");
+  const name = isRef ? value.slice(4) : value;
+  const list = refList(name);
+  $("r-search").value = "";
+  $("r-builtin").hidden = !list;
+  $("r-mine").hidden = isRef;
+  $("r-save").hidden = isRef;
+  const note = isRef ? "CWE 번호는 취약점 예외사유를 편집할 때 CWE 칸에서 이 목록을 보고 고릅니다. 이 목록은 도구에 든 것이라 여기서 고치지 않습니다."
+    : list ? "" : ((S.rule_notes || {})[name] || "이 기준은 도구에 든 목록이 없습니다. 아래에 넣으십시오.");
+  $("r-note").textContent = note;
+  $("r-note").hidden = !note;
+  $("r-meta").innerHTML = list ? ruleListMeta(list) : "";
+  $("r-msg").textContent = "";
+  renderRuleList();
+  if (isRef) {
+    $("r-info").textContent = "도구에 든 목록입니다(보기만).";
+    return;
+  }
+  const mine = S.user_rules[name] || {};
+  const all = Object.keys(S.rule_titles[name] || {}).length;
+  const info = (S.user_rule_info || {})[name] || {};
+  $("r-version").value = info["버전"] || "";
+  $("r-source").value = info["출처"] || "";
+  $("r-text").value = Object.entries(mine).map(([id, title]) => `${id}\t${title}`).join("\n");
+  $("r-error").textContent = "";
+  $("r-info").textContent = `편집할 때 고를 수 있는 규칙 ${all}개`
+    + (list ? ` · 도구에 든 목록 ${list.rules.length}개` : " · 도구에 든 목록 없음")
+    + ` · 직접 넣은 것 ${Object.keys(mine).length}개 (나머지는 연 소스에 이미 적힌 것)`;
+}
+
+// 도구에 든 목록을 찾기 칸의 글로 걸러 보인다 (번호·이름 어디에 있어도 찾는다)
+function renderRuleList() {
+  const value = $("r-standard").value;
+  const list = refList(value.startsWith("ref:") ? value.slice(4) : value);
+  if (!list) { $("r-list").innerHTML = ""; return; }
+  const q = $("r-search").value.trim().toLowerCase();
+  const rows = list.rules.filter(([id, title]) => !q || (id + " " + title).toLowerCase().includes(q));
+  const total = list.rules.length;
+  $("r-count").textContent = q ? `${total}개 중 ${rows.length}개` : `${total}개`;
+  $("r-list").innerHTML = rows.length
+    ? `<table>${rows.map(([id, title]) => `<tr><td class="rid">${esc(id)}</td><td>${esc(title)}</td></tr>`).join("")}</table>`
+    : '<div class="empty">찾는 글이 든 규칙이 없습니다.</div>';
+}
+
+// 글 속의 http(s) 주소를 링크로 (폐쇄망에서는 열리지 않지만 주소는 그대로 보인다)
+const linkify = (text) => esc(text).replace(/https?:\/\/[^\s()<>"]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+
+// 도구에 든 목록의 버전과 가져온 곳
+function ruleListMeta(list) {
+  const parts = [];
+  if (list.version) parts.push(`<b>버전</b> ${esc(list.version)}`);
+  if (list.source) parts.push(`<b>가져온 곳</b> ${linkify(list.source)}`);
+  if (list.fetched) parts.push(`<b>받은 날</b> ${esc(list.fetched)}`);
+  return parts.join(" · ");
+}
+
+// 직접 넣은 규칙 칸에 [번호, 규칙명]을 더한다. 같은 번호의 줄은 새것으로 바꾼다. 바꾼 수를 돌려준다.
+function mergeRuleLines(pairs) {
+  const keyOf = (line) => line.split(/\t|:\s|\s\|\s/)[0].trim();
+  const ids = new Set(pairs.map(([id]) => id));
+  const lines = $("r-text").value.split("\n");
+  const replaced = lines.filter((l) => l.trim() && ids.has(keyOf(l))).length;
+  const kept = lines.filter((l) => l.trim() && !ids.has(keyOf(l)));
+  $("r-text").value = [...kept, ...pairs.map(([id, title]) => `${id}\t${title}`)].join("\n");
+  return replaced;
+}
+
+function addRuleLine() {
+  const id = $("r-add-id").value.trim(), title = $("r-add-title").value.trim();
+  if (!id || !title) { $("r-msg").textContent = "번호와 규칙명을 모두 적으십시오."; return; }
+  const replaced = mergeRuleLines([[id, title]]);
+  $("r-add-id").value = ""; $("r-add-title").value = "";
+  $("r-add-id").focus();
+  $("r-msg").textContent = `${id}${replaced ? "을(를) 바꿨습니다" : "을(를) 더했습니다"}. 저장을 눌러야 저장됩니다.`;
+}
+
+async function importRuleFile(file) {
+  try {
+    const res = await api("/api/rules/parse", {name: file.name, data: toBase64(await file.arrayBuffer())});
+    if (!res.rules.length) { $("r-msg").textContent = `${file.name}: 읽을 수 있는 규칙이 없습니다.`; return; }
+    const replaced = mergeRuleLines(res.rules);
+    const notes = [`인코딩 ${res.encoding}`, res.header ? "머리줄 건너뜀" : "",
+      replaced ? `같은 번호 ${replaced}개는 새것으로 바꿈` : "",
+      res.skipped.length ? `읽지 못한 줄 ${res.skipped.length}개(${res.skipped.slice(0, 5).join(", ")}${res.skipped.length > 5 ? " …" : ""}번째)` : ""];
+    $("r-msg").textContent = `${file.name}에서 ${res.rules.length}개를 불러왔습니다(${notes.filter(Boolean).join(", ")}). 저장을 눌러야 저장됩니다.`;
+  } catch (err) { $("r-msg").textContent = `${file.name}: ${err.message}`; }
+}
+
+$("r-add").addEventListener("click", addRuleLine);
+$("r-import").addEventListener("click", () => $("r-file").click());
+$("r-file").addEventListener("change", () => { const f = $("r-file").files[0]; $("r-file").value = ""; if (f) importRuleFile(f); });
+// 창 안의 입력 칸에서 Enter 를 눌러도 창이 닫히지 않게 한다 (번호·규칙명 칸에서는 한 줄 더하기)
+["r-add-id", "r-add-title", "r-version", "r-source"].forEach((id) => $(id).addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  if (id.startsWith("r-add")) addRuleLine();
+}));
+
+$("r-standard").addEventListener("change", loadRules);
+$("r-search").addEventListener("input", renderRuleList);
+// 찾기 칸에서 Enter 를 눌러도 창이 닫히지 않게 한다 (form method="dialog")
+$("r-search").addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); });
+$("r-save").addEventListener("click", async () => {
+  try {
+    const res = await api("/api/rules", {standard: $("r-standard").value, text: $("r-text").value,
+                                         version: $("r-version").value, source: $("r-source").value});
+    showRules();
+    toast(`${res.standard}: 규칙 ${res.count}개를 저장했습니다.`);
+  } catch (err) { $("r-error").textContent = err.message; }
+});
+
+/* ---- 설정 ▸ 정보: 소프트웨어 정보, 오픈소스 정보 (원본은 THIRD_PARTY.md) ---- */
+async function showAbout(tab = "sw") {
+  let res;
+  try { res = await api("/api/about"); } catch (err) { toast(err.message, true); return; }
+  $("ab-sw").innerHTML = `<dl class="ab-dl">${res.software.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${linkify(v)}</dd>`).join("")}</dl>`;
+  $("ab-oss").innerHTML = aboutOss(res);
+  $("ab-doc").hidden = true;
+  selectAboutTab(tab);
+  if (!$("dlg-about").open) $("dlg-about").showModal();
+}
+
+function aboutOss(res) {
+  if (res.error) return `<p class="ab-note">${esc(res.error)}</p>`;
+  const internal = res.components.some((c) => c.internal);
+  let html = `<p class="ab-note">SRT-ARA의 도구 코드는 MIT 라이선스입니다. 아래는 함께 넣은 외부 소프트웨어·자료이며 각자의 조건을 따릅니다
+    (THIRD_PARTY.md).${internal ? ' "내부용" 표시는 라이선스가 내부 사용만 허락해 공개본에는 넣지 않는 자료입니다.' : ""}</p>`;
+  html += `<table class="ab-table"><thead><tr><th>이름</th><th>버전</th><th>용도</th><th>라이선스</th><th>받은 곳</th></tr></thead><tbody>`
+    + res.components.map((c) => `<tr><td>${esc(c.name)}${c.internal ? ' <span class="badge warn">내부용</span>' : ""}
+        ${c.present ? "" : ' <span class="badge err">파일 없음</span>'}<div class="ab-note mono">${esc(c.file)}</div></td>
+        <td>${esc(c.version)}</td><td>${esc(c.purpose)}</td><td>${esc(c.license)}</td><td>${linkify(c.source)}</td></tr>`).join("")
+    + "</tbody></table>";
+  html += `<h3 class="rsec">함께 넣지 않지만 쓰는 것</h3><table class="ab-table"><thead><tr><th>이름</th><th>버전</th><th>용도</th><th>라이선스</th></tr></thead><tbody>`
+    + res.not_bundled.map((p) => `<tr><td>${esc(p.name)}</td><td>${p.installed ? esc(p.version || "있음") : "설치 안 됨"}</td>
+        <td>${esc(p.purpose)}</td><td>${esc(p.license)}</td></tr>`).join("") + "</tbody></table>";
+  html += `<h3 class="rsec">라이선스·고지 전문</h3><table class="ab-table"><tbody>`
+    + res.documents.map((d) => `<tr><td class="mono">${esc(d.name)}${d.internal ? ' <span class="badge warn">내부용</span>' : ""}</td>
+        <td>${esc(d.about)}</td><td>${d.present ? `<button type="button" data-ab-doc="${esc(d.name)}">전문 보기</button>`
+          : (d.name === "LICENSE" ? "배포 전(공개본에서 만듦)" : "파일 없음")}</td></tr>`).join("")
+    + `<tr><td class="mono">CHANGELOG.md</td><td>버전별 변경 이력과 따르는 매뉴얼 판</td>
+        <td><button type="button" data-ab-doc="CHANGELOG.md">보기</button></td></tr></tbody></table>`;
+  return html;
+}
+
+function selectAboutTab(tab) {
+  document.querySelectorAll("[data-ab-tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.abTab === tab)));
+  $("ab-sw").hidden = tab !== "sw";
+  $("ab-oss").hidden = tab !== "oss";
+}
+
+async function showAboutDoc(name) {
+  try {
+    const res = await fetch(`/api/doc?name=${encodeURIComponent(name)}`);
+    if (!res.ok) throw new Error((await res.json()).error || "문서를 읽지 못했습니다.");
+    $("ab-doc-name").textContent = name;
+    $("ab-doc-text").textContent = await res.text();
+    $("ab-doc").hidden = false;
+    $("ab-doc").scrollIntoView({block: "nearest"});
+  } catch (err) { toast(err.message, true); }
+}
+
+$("dlg-about").addEventListener("click", (e) => {
+  const tab = e.target.closest("[data-ab-tab]");
+  if (tab) { selectAboutTab(tab.dataset.abTab); return; }
+  const doc = e.target.closest("[data-ab-doc]");
+  if (doc) showAboutDoc(doc.dataset.abDoc);
+});
+$("ab-doc-close").addEventListener("click", () => { $("ab-doc").hidden = true; });
+
+/* ---- 열기 ---- */
+const picked = new Set();     // 고른 소스 파일 경로
+let browseEntries = [];       // 지금 보고 있는 폴더의 항목
+let browsing = "";
+
+async function browse(dir) {
+  let res;
+  try { res = await api("/api/browse", {dir}); } catch (err) { toast(err.message, true); return; }
+  browsing = res.dir;
+  browseEntries = res.entries;
+  selectedDir = null;
+  $("o-choice").hidden = true;
+  $("o-path").value = res.dir;
+  updateFolderButton();
+  const icon = {dir: "폴더", project: "구성", source: "소스"};
+  let html = res.parent !== null ? `<li data-up="${esc(res.parent)}"><span class="ico">↑</span><span class="nm">상위 폴더</span></li>` : "";
+  res.entries.forEach((en) => {
+    if (en.type === "dir") {
+      // 폴더: 누르면 고르고(아래 단추로 엽니다), 두 번 누르거나 › 를 누르면 그 안으로 들어갑니다
+      html += `<li class="dir" data-dir="${esc(en.path)}" tabindex="0" aria-selected="false" title="두 번 누르면 폴더 안으로 들어갑니다">
+        <span class="ico">${icon.dir}</span><span class="nm">${esc(en.name)}</span>
+        <button type="button" class="enter" data-enter="${esc(en.path)}" title="폴더 안으로">›</button></li>`;
+    } else if (en.type === "source") {
+      html += `<li class="source"><label style="display:flex;gap:8px;flex:1;min-width:0;cursor:pointer">
+        <input type="checkbox" data-pick="${esc(en.path)}" ${picked.has(en.path) ? "checked" : ""}>
+        <span class="nm mono">${esc(en.name)}</span></label><span class="ico">${icon.source}</span></li>`;
+    } else {
+      html += `<li class="${en.type}" data-project="${esc(en.path)}">
+        <span class="ico">${icon[en.type]}</span><span class="nm">${esc(en.name)}</span>
+        ${en.label ? `<span class="kind">${esc(en.label)}${en.detected ? " · 권장" : ""}</span>` : ""}</li>`;
+    }
+  });
+  $("o-entries").innerHTML = html || '<li><span class="nm">폴더, 프로젝트 파일, 소스 파일이 없습니다.</span></li>';
+}
+
+async function openPaths(paths, add = $("o-add").checked) {
+  try {
+    await api("/api/open", {paths, add});
+    picked.clear();
+    $("dlg-open").close();
+    view = "scope";
+    render();
+    const warnings = S.projects.reduce((n, p) => n + p.warnings.length, 0);
+    toast(`소스 ${S.files_scanned}개를 읽었습니다.` + (warnings ? ` 해석하지 못한 부분 ${warnings}건은 프로젝트를 눌러 확인하십시오.` : ""));
+  } catch (err) { toast(err.message, true); }
+}
+
+function resetOpenDialog() {
+  picked.clear();
+  $("o-files").disabled = true;
+  $("o-files").textContent = "고른 파일 열기";
+  $("o-add").checked = false;
+}
+
+function showOpen() {
+  resetOpenDialog();
+  $("dlg-open").showModal();
+  browse(browsing);
+}
+
+$("o-pick").addEventListener("click", pickFolder);
+$("o-go").addEventListener("click", () => browse($("o-path").value.trim()));
+$("o-path").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); browse($("o-path").value.trim()); } });
+// 목록에서 고른 폴더가 있으면 그 폴더를, 없으면 지금 보고 있는 폴더를 연다.
+let selectedDir = null;
+let openTarget = "";
+function updateFolderButton() {
+  const name = selectedDir ? selectedDir.replace(/[\\/]+$/, "").split(/[\\/]/).pop() : "";
+  $("o-folder").textContent = selectedDir ? `고른 폴더 열기: ${name}` : "이 폴더 열기";
+  $("o-folder").disabled = !(selectedDir || browsing);
+  $("o-entries").querySelectorAll("li.dir").forEach((li) => li.setAttribute("aria-selected", String(li.dataset.dir === selectedDir)));
+}
+
+$("o-folder").addEventListener("click", async () => {
+  const target = selectedDir || browsing;
+  let entries = browseEntries;
+  if (selectedDir) {
+    try { entries = (await api("/api/browse", {dir: selectedDir})).entries; } catch (err) { toast(err.message, true); return; }
+  }
+  openFolder(target, entries);
+});
+
+// 이 PC 의 폴더 선택 창(파일 탐색기)으로 폴더를 고른다. 창을 띄울 수 없으면 화면 안의 목록을 연다.
+async function pickFolder() {
+  let res;
+  try {
+    res = await api("/api/pick-folder", {initial: browsing});
+  } catch (err) {
+    toast(err.message, true);
+    if (!$("dlg-open").open) showOpen();
+    return;
+  }
+  if (!res.path) return;                          // 취소
+  let listing;
+  try { listing = await api("/api/browse", {dir: res.path}); } catch (err) { toast(err.message, true); return; }
+  if (!listing.entries.some((e) => e.type === "project")) { openPaths([res.path]); return; }
+  if (!$("dlg-open").open) { resetOpenDialog(); $("dlg-open").showModal(); }
+  await browse(res.path);                         // 프로젝트 파일이 있으면 그 폴더를 보이며 무엇으로 열지 묻는다
+  openFolder(res.path, listing.entries);
+}
+
+// 폴더를 열 때: 프로젝트 파일이 있으면 무엇으로 열지 고르게 하고, 없으면 폴더의 모든 소스(하위 폴더 포함)를 연다.
+function openFolder(target, entries) {
+  openTarget = target;
+  const projects = entries.filter((e) => e.type === "project")
+    .sort((a, b) => (b.detected - a.detected) || ((a.rank ?? 99) - (b.rank ?? 99)) || a.name.localeCompare(b.name))
+    // .project, .cproject, .ccsproject 는 한 프로젝트를 이루므로 하나만 보인다
+    .filter((e, i, all) => !e.label.startsWith("Eclipse") || all.findIndex((x) => x.label.startsWith("Eclipse")) === i);
+  if (!projects.length) { openPaths([openTarget]); return; }
+  const box = $("o-choice");
+  const where = openTarget.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
+  box.innerHTML = `<div class="choice-title">${esc(where)} 폴더에 프로젝트 파일이 있습니다. 무엇으로 열까요?</div>`
+    + projects.map((p) => `<button type="button" class="${p.detected ? "primary" : ""}" data-choose="${esc(p.path)}">
+        ${esc(p.name)} <span class="kind">${esc(p.label)}${p.detected ? " · 권장" : ""}</span></button>`).join("")
+    + `<button type="button" data-choose-folder="1">폴더의 모든 소스로 열기 (하위 폴더 포함)</button>`;
+  box.hidden = false;
+  box.scrollIntoView({block: "nearest"});
+}
+$("o-choice").addEventListener("click", (e) => {
+  const project = e.target.closest("[data-choose]");
+  if (project) openPaths([project.dataset.choose]);
+  else if (e.target.closest("[data-choose-folder]")) openPaths([openTarget]);
+});
+$("o-files").addEventListener("click", () => openPaths([...picked]));
+$("o-entries").addEventListener("click", (e) => {
+  const enter = e.target.closest("[data-enter]");
+  if (enter) { browse(enter.dataset.enter); return; }
+  const li = e.target.closest("li");
+  if (!li) return;
+  if (li.dataset.up !== undefined) browse(li.dataset.up);
+  else if (li.dataset.dir) {                       // 폴더 고르기 (다시 누르면 풀림)
+    selectedDir = selectedDir === li.dataset.dir ? null : li.dataset.dir;
+    $("o-choice").hidden = true;
+    updateFolderButton();
+  } else if (li.dataset.project) openPaths([li.dataset.project]);
+});
+$("o-entries").addEventListener("dblclick", (e) => {
+  const li = e.target.closest("li.dir");
+  if (li) browse(li.dataset.dir);
+});
+$("o-entries").addEventListener("keydown", (e) => {
+  const li = e.target.closest("li.dir");
+  if (!li) return;
+  if (e.key === "Enter") { e.preventDefault(); browse(li.dataset.dir); }
+  if (e.key === " ") { e.preventDefault(); li.click(); }
+});
+$("o-entries").addEventListener("change", (e) => {
+  const path = e.target.dataset.pick;
+  if (!path) return;
+  if (e.target.checked) picked.add(path); else picked.delete(path);
+  $("o-files").disabled = !picked.size;
+  $("o-files").textContent = picked.size ? `고른 파일 ${picked.size}개 열기` : "고른 파일 열기";
+});
+
+async function rescan(quiet) {
+  try {
+    await api("/api/rescan", {});
+    if (!quiet) toast("소스를 다시 읽었습니다.");
+    else toast("소스가 바뀌어 다시 읽었습니다.");
+  } catch (err) { toast(err.message, true); }
+}
+
+/* ---- 3 보고서 만들기 화면 ---- */
+// 화면에 들어올 때만 판 보관 칸과 지난 결과를 비운다 (상태가 바뀌어 다시 그릴 때는 입력한 메모를 지키도록)
+function prepareReport() {
+  $("g-issue").checked = false;
+  $("g-note").value = "";
+  $("g-note").disabled = true;
+  $("g-result").innerHTML = "";
+}
+function renderReport() {
+  $("g-heading").textContent = S.heading;
+  renderPlaceholder();
+  $("g-image").disabled = !S.image_available;
+  $("g-out").innerHTML = folderLink("", S.out);
+  // 이 도구 버전이 따르는 매뉴얼 판 (개정되면 도구 버전을 올려 대응한다)
+  $("g-basis").textContent = S.manual ? `${S.manual} · ${S.name || "SRT-ARA"} ${S.version_label || S.version}` : "";
+  const next = (S.history.length ? S.history[S.history.length - 1]["판"] : 0) + 1;
+  $("g-issue-label").textContent = `새 판(v${next})으로 보관`;
+  const pending = Object.keys(drafts).length;
+  $("g-notices").innerHTML = errorNotice("보고서는 만들 수 있지만 그 예외사유는 빠지거나 틀릴 수 있습니다.")
+    + (pending ? `<div class="note-box warning">소스에 반영하지 않은 편집이 ${pending}건 있습니다. 반영하지 않은 내용은 보고서에 들어가지 않습니다.
+        <button type="button" data-go="scope">2 예외사유 검토·편집으로</button></div>` : "");
+  renderHistory();
+}
+$("report").addEventListener("click", (e) => {
+  const go = e.target.closest("[data-go]");
+  if (go) goStep(go.dataset.go);
+});
+
+$("g-run").addEventListener("click", async () => {
+  const formats = ["md", "hwpx"].filter((f) => $("g-" + f).checked);
+  const btn = $("g-run");
+  btn.disabled = true;
+  $("g-result").innerHTML = "생성하는 중…";
+  try {
+    const lastBefore = S.history.length ? S.history[S.history.length - 1] : null;
+    const res = await api("/api/generate", {
+      formats, issue: $("g-issue").checked, note: $("g-note").value.trim(),
+      code: document.querySelector('input[name="g-code"]:checked').value, compact: $("g-compact").checked});
+    const kb = (n) => (n < 1024 ? n + " B" : (n / 1024).toFixed(1) + " KB");
+    const ch = res.changes;
+    const since = lastBefore
+      ? `<div>지난 판(v${lastBefore["판"]}, ${esc(lastBefore["시각"])}) 대비: 추가 ${ch["추가"]}건, 변경 ${ch["변경"]}건, 삭제 ${ch["삭제"]}건</div>` : "";
+    $("g-result").innerHTML = (res.errors
+      ? `<div class="note-box error">잘못 쓴 예외사유 주석이 ${res.errors}건 있습니다. "1 잘못 쓴 주석 고치기"에서 확인하십시오.</div>` : "")
+      + (res.version ? `<div class="note-box">v${res.version["판"]}(으)로 보관했습니다: 출력 폴더의 ${folderLink("이력/" + res.version["폴더"], "이력/" + res.version["폴더"])}</div>` : "")
+      + since
+      + `<div>출력 폴더: <span class="mono">${folderLink("", res.out)}</span></div><ul class="files">`
+      + res.files.map((f) => `<li><a href="${outHref(f.name)}" target="_blank" rel="noopener">${esc(f.name)}</a><span>${kb(f.size)}</span></li>`).join("")
+      + "</ul>";
+    if (res.version) {
+      $("g-issue").checked = false;
+      $("g-note").value = "";
+      $("g-note").disabled = true;
+      $("g-issue-label").textContent = `새 판(v${res.version["판"] + 1})으로 보관`;
+    }
+    renderHistory();
+  } catch (err) {
+    $("g-result").innerHTML = `<div class="note-box error">${esc(err.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+window.addEventListener("beforeunload", (e) => { if (Object.keys(drafts).length) { e.preventDefault(); e.returnValue = ""; } });
+
+api("/api/state").then(setState).catch((err) => toast(err.message, true));
+</script>
+</body>
+</html>

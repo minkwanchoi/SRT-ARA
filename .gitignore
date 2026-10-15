@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+srt_report/
+.claude/
+examples/out/
+examples/out_image/
