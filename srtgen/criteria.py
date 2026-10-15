@@ -1,7 +1,9 @@
 """SW 신뢰성 시험 기준.
 
-출처: 「무기체계 소프트웨어 개발 및 관리 매뉴얼」 방위사업청 매뉴얼 제2024-6호(개정 2024.12.26.)
-부록 7 '3. 시험 기준'과 사용자가 정리해 준 시험 종류별 기준.
+출처: 「무기체계 소프트웨어 개발 및 관리 매뉴얼」, 방위사업청 매뉴얼 제2024-6호(개정 : 2024. 12.26.)
+- 부록 7 「소프트웨어 신뢰성/보안성 시험 절차」 제2장 3. 시험기준(부록 7-10~12): 시험 종류, 보안약점 점검 목록, 메트릭 예시
+- 부록 7 제3장 1. 동적 시험 계획 수립 절차의 시험 기준 설정 방법(부록 7-13): 코드 실행률(문장·분기·MC/DC)
+- 부록 6 「무기체계 소프트웨어 코딩규칙」 제1장 3. 관련표준(부록 6-2): 코딩 규칙 기준(부록 7-10이 부록 6 준수를 요구)
 
 기준이 개정되면 이 파일만 고친다. 표기법 항목의 선택지, 점검, 보고서가 여기서 값을 가져간다.
 """
@@ -20,8 +22,9 @@ from typing import Dict, List, Optional, Tuple
 # (CHANGELOG.md). 산출물(exceptions.json, 요약)과 판 이력에 이 값과 도구 버전이 적힌다.
 MANUAL_TITLE = "무기체계 소프트웨어 개발 및 관리 매뉴얼"
 MANUAL_EDITION = "제2024-6호"                  # 방위사업청 매뉴얼 번호
-MANUAL_REVISED = "2024.12.26."                 # 개정일
-MANUAL = f"{MANUAL_TITLE}, 방위사업청 매뉴얼 {MANUAL_EDITION}(개정: {MANUAL_REVISED})"
+MANUAL_REVISED = "2024. 12.26."                # 개정일 (매뉴얼 표지의 표기 그대로)
+# 매뉴얼 표지의 표기: "방위사업청 매뉴얼 제2024-6호(개정 : 2024. 12.26.)" (사용자 확정, 2026-10-15)
+MANUAL = f"{MANUAL_TITLE}, 방위사업청 매뉴얼 {MANUAL_EDITION}(개정 : {MANUAL_REVISED})"
 
 
 def basis() -> Dict[str, str]:
@@ -104,8 +107,8 @@ LIST_INFO: Dict[str, Dict[str, str]] = {
     ".NET Framework Design Guidelines": _info(_DOTNET, "page_date", "문서 날짜 {}"),
     **{f"CWE-{view}": _info(_CWE, "page_updated", "페이지 갱신 {}", f"https://cwe.mitre.org/data/definitions/{view}.html")
        for view in CWE_VIEW_LANGUAGES},
-    "보안약점 점검 목록": {"version": f"매뉴얼 {MANUAL_EDITION}(개정: {MANUAL_REVISED})",
-                     "source": f"{MANUAL_TITLE} 부록 7 '3. 시험 기준'", "fetched": ""},
+    "보안약점 점검 목록": {"version": f"방위사업청 매뉴얼 {MANUAL_EDITION}(개정 : {MANUAL_REVISED})",
+                     "source": f"{MANUAL_TITLE} 부록 7 제2장 '3. 시험기준'(부록 7-10~11)", "fetched": ""},
 }
 
 # 보안약점 점검 목록: CWE-ID -> (내용, 코딩규칙/취약점 점검 항목과 중복 여부)

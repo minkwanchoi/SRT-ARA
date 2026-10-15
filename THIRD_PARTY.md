@@ -9,7 +9,7 @@ SRT-ARA의 **도구 코드는 MIT 라이선스**다(`LICENSE`). 아래 파일은
 | .NET 코드 분석 품질 규칙 목록 (일부) | 문서 날짜 2024.01.31 | `srtgen/data/dotnet_quality_rules.json` | 21,292 바이트 | 규칙 번호와 제목 335개(CA, 같은 표의 IL 포함). ".NET Framework Design Guidelines" 기준의 규칙명 채우기, 화면 선택지 | CC BY 4.0 | https://raw.githubusercontent.com/dotnet/docs/main/docs/fundamentals/code-analysis/quality-rules/index.md (96,334 바이트, Microsoft Learn의 quality-rules 페이지 원본) |
 | .NET 코드 스타일 규칙 목록 (일부) | 문서 날짜 2026.07.09 | `srtgen/data/csharp_style_rules.json` | 6,717 바이트 | 규칙 번호와 제목 130개(IDE). "C# Coding Conventions" 기준의 규칙명 채우기, 화면 선택지 | CC BY 4.0 | https://raw.githubusercontent.com/dotnet/docs/main/docs/fundamentals/code-analysis/style-rules/index.md (25,067 바이트, Microsoft Learn의 style-rules 페이지 원본) |
 
-보안약점 점검 목록(44개)은 파일이 아니라 `srtgen/criteria.py` 안에 있다. 「무기체계 소프트웨어 개발 및 관리 매뉴얼」 방위사업청 매뉴얼 제2024-6호 부록 7 '3. 시험 기준'의 표에서 CWE 번호와 이름을 옮긴 것이다.
+보안약점 점검 목록(44개)은 파일이 아니라 `srtgen/criteria.py` 안에 있다. 「무기체계 소프트웨어 개발 및 관리 매뉴얼」, 방위사업청 매뉴얼 제2024-6호(개정 : 2024. 12.26.) 부록 7 제2장 '3. 시험기준'의 보안약점 점검 목록(부록 7-10~11쪽)에서 CWE 번호와 이름을 옮긴 것이다.
 
 
 ## 받은 경위
