@@ -27,7 +27,7 @@ CWE 목록은 2026.10.14에 위 주소에서 받아, **번호와 이름(제목)�
 
 ## 폐쇄망용 묶음에만 들어가는 것
 
-소스 저장소에는 넣지 않고, 별도 zip(`SRT-ARA_ver<버전>_폐쇄망용.zip`, GitHub Release의 첨부 파일)에만 들어간다. 폐쇄망 PC에서 설치 없이 쓰도록 휴대용 Python을 도구 폴더의 `python/`에 풀고 Pillow·Pygments를
+소스 저장소에는 넣지 않고, 별도 zip(`SRT-ARA_ver<버전>_offline.zip`, GitHub Release의 첨부 파일)에만 들어간다. 폐쇄망 PC에서 설치 없이 쓰도록 휴대용 Python을 도구 폴더의 `python/`에 풀고 Pillow·Pygments를
 미리 넣은 것이다. 세 파일 모두 재배포가 허락되며, 고지는 묶음 안에 그대로 있다.
 
 | 이름 | 버전 | 받은 파일 (크기) | 묶음 안의 위치 | 라이선스와 고지 | 받은 곳 |

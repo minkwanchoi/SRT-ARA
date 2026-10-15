@@ -10,7 +10,7 @@
 생성기를 구현한 것이다.
 
 소개 영상(1분, 자막)은 [Release ver.0.01](https://github.com/minkwanchoi/SRT-ARA/releases/tag/v0.01)의 첨부 파일
-`SRT-ARA_소개영상_ver0.01.mp4`다.
+`SRT-ARA_intro_ver0.01.mp4`다.
 
 ## 사용법
 
@@ -260,7 +260,7 @@ Java Code Conventions 목차(비상업·내부 사용만)는 라이선스상 넣
 
 ### 방법 1: 폐쇄망용 묶음 (권장)
 
-Release에 함께 올린 **`SRT-ARA_ver<버전>_폐쇄망용.zip`**(약 30MB) 하나만 옮긴다. 휴대용 Python 3.14(Tcl/Tk 포함)와
+Release에 함께 올린 **`SRT-ARA_ver<버전>_offline.zip`**(약 30MB) 하나만 옮긴다. 휴대용 Python 3.14(Tcl/Tk 포함)와
 Pillow·Pygments가 도구 폴더의 `python/`에 미리 들어 있다.
 
 1. zip을 폐쇄망 PC의 아무 폴더에 푼다(경로에 한글·빈칸이 있어도 된다).
