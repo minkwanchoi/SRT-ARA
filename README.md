@@ -9,8 +9,11 @@
 「무기체계 소프트웨어 신뢰성 시험에서 예외사유의 효율적 관리 방안」(2018)의 예외사유 보고서
 생성기를 구현한 것이다.
 
-소개 영상(1분, 자막)은 [Release ver.0.01](https://github.com/minkwanchoi/SRT-ARA/releases/tag/v0.01)의 첨부 파일
-`SRT-ARA_intro_ver0.01.mp4`다.
+## 1분 소개
+
+![예외사유 주석 작성, 잘못 쓴 주석 고치기, 유형별 검토·편집, hwpx 보고서와 판 이력으로 이어지는 흐름](docs/media/intro-preview.gif)
+
+*예제 소스(`examples/src`)로 띄운 화면과 만든 보고서를 재구성한 1분 사용 예시다. 실제 사업 자료가 아니다.*
 
 ## 사용법
 
