@@ -15,11 +15,20 @@ from .forms import Cell, CodeBox, FormTable, Para, Picture, Report
 
 
 def _esc(text: str) -> str:
+    """HTML 글 자리(태그 사이)용. 따옴표는 글 자리에서 해가 없으므로 바꾸지 않는다(md 를 사람이 읽기 좋게).
+    속성 자리(alt="…", src="…")에는 반드시 _attr 를 쓴다."""
     return html.escape(text, quote=False)
 
 
+def _attr(text: str) -> str:
+    """HTML 속성 값 자리용: 따옴표까지 바꾼다. 이 HTML 은 화면의 양식 미리보기에도 그대로 들어가므로, 캡션에 든
+    따옴표가 속성을 닫고 onload 같은 속성을 만들면 스크립트가 돈다(49단계 보안 점검)."""
+    return html.escape(text, quote=True)
+
+
 def _rel(path: Path, base: Path) -> str:
-    return Path(os.path.relpath(path, base)).as_posix()
+    """그림의 상대 경로(src 속성 값). 속성 자리이므로 _attr 로 바꿔 돌려준다."""
+    return _attr(Path(os.path.relpath(path, base)).as_posix())
 
 
 def _content(cell: Cell, base: Path) -> str:
@@ -43,7 +52,7 @@ def _content(cell: Cell, base: Path) -> str:
             flush()
             out.append(f"<b>{_esc(c.caption)}</b>")
             if c.images:
-                out += [f'<br><img src="{_rel(p, base)}" alt="{_esc(c.caption)}">' for p in c.images]
+                out += [f'<br><img src="{_rel(p, base)}" alt="{_attr(c.caption)}">' for p in c.images]
                 out.append("<br>")
             else:
                 width = max((len(str(n)) for n, _ in c.lines), default=3)
@@ -54,7 +63,7 @@ def _content(cell: Cell, base: Path) -> str:
             cap = f"<br><i>{_esc(c.caption)}</i>" if c.caption else ""
             dims, ratio = imageinfo.size(c.path), imageinfo.scale(c.path)
             width = f' width="{round(dims[0] * ratio)}"' if dims and ratio != 1.0 else ""
-            out.append(f'<div align="center"><img src="{_rel(c.path, base)}" alt="{_esc(c.caption)}"{width}>'
+            out.append(f'<div align="center"><img src="{_rel(c.path, base)}" alt="{_attr(c.caption)}"{width}>'
                        f'{cap}</div>')
     flush()
     return "".join(out)

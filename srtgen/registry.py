@@ -63,8 +63,27 @@ class Registry:
         return True
 
     def listing(self) -> List[dict]:
-        """화면에 보낼 목록: 대상이 아직 있는지 함께."""
-        return [dict(e, exists=all(Path(p).exists() for p in e["inputs"])) for e in self.entries()]
+        """화면에 보낼 목록: 대상이 아직 있는지 함께. 값은 정해진 모양으로 고른다(개수·판 번호는 정수, 나머지는 글).
+        목록 파일은 사용자 폴더에 있지만 판 번호 등은 프로젝트 쪽 파일에서 옮겨 온 값이므로 그대로 믿지 않는다."""
+        out = []
+        for e in self.entries():
+            clean = {"key": str(e["key"]), "inputs": [str(p) for p in e["inputs"]]}
+            clean.update({k: str(e[k]) for k in _TEXT_KEYS if k in e and e[k] is not None})
+            clean.update({k: _count(e.get(k)) for k in _COUNT_KEYS})
+            clean["exists"] = all(Path(p).exists() for p in clean["inputs"])
+            out.append(clean)
+        return out
+
+
+_TEXT_KEYS = ("project", "csci", "csc", "folder", "opened", "generated")
+_COUNT_KEYS = ("items", "occurrences", "errors", "version")
+
+
+def _count(value: object) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
 
 
 def now() -> str:

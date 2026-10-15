@@ -17,6 +17,7 @@ from typing import Dict, List, Optional
 from . import NAME, NAME_KO, VERSION_LABEL, codeimg, criteria, history, settings
 from .forms import report_heading
 from .generate import FORMATS, write_outputs
+from .progress import ConsoleProgress
 from .project import ProjectError, open_paths, resolve_inputs
 from .scanner import scan_entries
 
@@ -88,11 +89,14 @@ def _serve(argv: List[str]) -> int:
     _check_sources(p, args.sources)
     sources = _inputs(args)
     from .server import App, serve
+    console = ConsoleProgress()
     try:
         app = App(sources, args.out, excludes=tuple(args.exclude), encoding=args.encoding, rules=args.rules,
-                  overrides=_overrides(args), projects=args.projects)
+                  overrides=_overrides(args), projects=args.projects, on_progress=console)
     except ProjectError as e:
         p.error(str(e))
+    finally:
+        console.close()
     serve(app, args.port, not args.no_browser)
     return 0
 
@@ -133,8 +137,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         workspace = open_paths(sources, args.exclude)
     except ProjectError as e:
         p.error(str(e))
-    result = scan_entries(workspace.entries(), args.encoding)
-    out = args.out or settings.out_dir(settings.settings_dir(sources))
+    console = ConsoleProgress()
+    try:
+        result = scan_entries(workspace.entries(), args.encoding, console)
+    finally:
+        console.close()
+    out = args.out
+    if out is None:
+        out, refused = settings.out_choice(settings.settings_dir(sources))
+        if refused is not None:
+            print(f"[경고] {settings.FILE_NAME}의 \"{settings.OUT_KEY}\"({refused})가 프로젝트 폴더 밖이라 쓰지 않고 "
+                  f"{out}에 만듭니다. 그 폴더에 만들려면 -o 로 직접 지정하십시오.", file=sys.stderr)
     written = write_outputs(result, out, info["project"], info["csc"], formats, args.code, args.compact,
                             workspace.projects, csci=info["csci"])
     if args.issue is not None:

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Iterable, List, Sequence
 
 from . import codeimg, render_hwpx, render_md, summary
-from .forms import Options, build_reports
+from .forms import Options, build_reports, project_roots
 from .scanner import ScanResult
 
 FORMATS = ("md", "hwpx")
@@ -20,7 +20,8 @@ def write_outputs(result: ScanResult, out: Path, project: str, csc: str,
     if code_mode == "image" and not codeimg.available():
         code_mode = "text"
     out.mkdir(parents=True, exist_ok=True)
-    options = Options(project=project, csci=csci, csc=csc, code_mode=code_mode, out_dir=out)
+    options = Options(project=project, csci=csci, csc=csc, code_mode=code_mode, out_dir=out,
+                      roots=project_roots(projects))
     reports = build_reports(result, options)
     written = [summary.write_json(result, out),
                summary.write_summary(result, out, options.heading, projects)]

@@ -110,9 +110,11 @@ def placeholders(values: Dict[str, str]) -> List[str]:
     return [name for key, name in KEYS.items() if _EXAMPLE.search(values.get(key, "") or "")]
 
 
-def out_dir(directory: Optional[Path]) -> Path:
-    """보고서를 만들 폴더: srtgen.json 의 "출력 폴더"(그 폴더 기준 상대 경로 또는 절대 경로), 없으면 srt_report.
-    프로젝트 폴더 안에 두어 소스와 함께 형상관리한다. 연 것이 없으면 지금 폴더의 srt_report."""
+def out_choice(directory: Optional[Path]) -> Tuple[Path, Optional[Path]]:
+    """(쓸 출력 폴더, 쓰지 않은 폴더). srtgen.json 의 "출력 폴더"는 프로젝트 폴더 안(상대 경로)만 따른다.
+    밖(절대 경로, `..` 로 나가는 경로)을 가리키면 쓰지 않고 srt_report 를 쓰며 그 경로를 둘째 값으로 알린다.
+    srtgen.json 은 저장소에 들어 있어 남이 만든 프로젝트를 열면 그 사람이 정한 값이므로, PC 의 다른 폴더에
+    파일을 쓰게 두지 않는다(49단계 보안 점검). 명령줄 -o 와 화면에서 사용자가 고른 경우는 이 함수를 거치지 않는다."""
     base = directory or Path.cwd()
     configured = ""
     path = base / FILE_NAME
@@ -122,4 +124,18 @@ def out_dir(directory: Optional[Path]) -> Path:
             configured = value.strip() if isinstance(value, str) else ""
         except SettingsError:
             pass
-    return base / (configured or DEFAULT_OUT)
+    default = base / DEFAULT_OUT
+    if not configured:
+        return default, None
+    wanted = base / configured
+    try:
+        ok = wanted.resolve() != base.resolve() and base.resolve() in wanted.resolve().parents
+    except OSError:
+        ok = False
+    return (wanted, None) if ok else (default, wanted)
+
+
+def out_dir(directory: Optional[Path]) -> Path:
+    """보고서를 만들 폴더: srtgen.json 의 "출력 폴더"(프로젝트 폴더 안의 상대 경로), 없거나 밖이면 srt_report.
+    프로젝트 폴더 안에 두어 소스와 함께 형상관리한다. 연 것이 없으면 지금 폴더의 srt_report."""
+    return out_choice(directory)[0]

@@ -7,7 +7,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from . import criteria, notation
 from .lexer import Comment, Language, Lexed, language_for, mask_spans
@@ -474,19 +474,28 @@ def group(blocks: List[Block], diags: List[Diagnostic]) -> List[ExceptionItem]:
     return items
 
 
-def scan(roots: Iterable[Path], excludes: Iterable[str] = (), encoding: Optional[str] = None) -> ScanResult:
+def scan(roots: Iterable[Path], excludes: Iterable[str] = (), encoding: Optional[str] = None,
+         progress: Optional[Callable[[int, int, str], None]] = None) -> ScanResult:
     """폴더(또는 소스 파일)를 훑어 수집한다."""
-    return scan_entries(iter_sources(roots, excludes), encoding)
+    return scan_entries(iter_sources(roots, excludes), encoding, progress)
 
 
-def scan_entries(entries: Iterable[Tuple[Path, str, Language]], encoding: Optional[str] = None) -> ScanResult:
-    """(파일, 식별자, 언어) 목록을 수집한다. 프로젝트 파일에서 읽은 소스 구성에 쓴다."""
+def scan_entries(entries: Iterable[Tuple[Path, str, Language]], encoding: Optional[str] = None,
+                 progress: Optional[Callable[[int, int, str], None]] = None) -> ScanResult:
+    """(파일, 식별자, 언어) 목록을 수집한다. 프로젝트 파일에서 읽은 소스 구성에 쓴다.
+
+    progress(읽은 수, 전체 수, 지금 읽는 파일)를 주면 파일을 읽기 전마다 부른다(화면·콘솔의 진행 막대).
+    전체 수를 알려고 목록을 먼저 다 모은다(경로만이라 가볍다)."""
+    entries = list(entries)
+    total = len(entries)
     blocks: List[Block] = []
     diags: List[Diagnostic] = []
     paths: Dict[str, Path] = {}
     hashes: Dict[str, str] = {}
     scanned = 0
     for path, rel, lang in entries:
+        if progress:
+            progress(scanned, total, rel)
         scanned += 1
         try:
             data = path.read_bytes()
@@ -501,6 +510,8 @@ def scan_entries(entries: Iterable[Tuple[Path, str, Language]], encoding: Option
             hashes[rel] = hashlib.sha1(data).hexdigest()
         blocks += file_blocks
         diags += file_diags
+    if progress:
+        progress(total, total, "")
     items = group(blocks, diags)
     diags.sort(key=lambda d: (d.file, d.line))
     return ScanResult(items, diags, scanned, len(paths), paths, hashes)

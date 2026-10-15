@@ -72,11 +72,43 @@ class Options:
     out_dir: Path = Path("out")
     image_lines: int = 30         # 그림 한 장에 넣을 최대 줄 수 (쪽 넘김 단위)
     csci: str = "OOOO분석장치"           # CSCI명
+    # @첨부 를 찾아도 되는 폴더(연 프로젝트의 폴더). 소스 파일이 있는 폴더 아래는 늘 된다 (project_roots)
+    roots: Tuple[Path, ...] = ()
 
     @property
     def heading(self) -> str:
         """보고서 제목의 앞부분: 사업명 CSCI명 CSC명 (양식 예시 "OOO체계개발사업 OOOO분석장치 운용 CSC")."""
         return report_heading(self.project, self.csci, self.csc)
+
+
+# 보고서에 넣을 수 있는 첨부(그림). 화면이 다이어그램과 함께 저장하는 .mmd 원본은 보고서에 넣지 않는다.
+PICTURE_TYPES = (".png", ".jpg", ".jpeg", ".gif", ".bmp")
+
+
+def inside(path: Path, roots) -> bool:
+    """path 가 roots 의 한 폴더 아래(또는 그 폴더 자체)에 있는가. 심볼릭 링크·`..` 는 풀어서 본다."""
+    try:
+        target = Path(path).resolve()
+    except OSError:
+        return False
+    for root in roots:
+        try:
+            r = Path(root).resolve()
+        except OSError:
+            continue
+        if target == r or r in target.parents:
+            return True
+    return False
+
+
+def project_roots(projects) -> Tuple[Path, ...]:
+    """연 프로젝트(project.Project 목록)의 폴더: 기준 폴더와 프로젝트 파일이 있는 폴더(폴더로 열었으면 그 폴더)."""
+    roots = []
+    for p in projects:
+        roots.append(Path(p.base))
+        origin = Path(p.origin)
+        roots.append(origin if origin.is_dir() else origin.parent)
+    return tuple(dict.fromkeys(roots))
 
 
 def report_heading(project: str, csci: str, csc: str) -> str:
@@ -127,19 +159,30 @@ class Builder:
         spec = occ.fields.get("첨부", "")
         for entry in filter(None, (e.strip() for e in spec.replace("\n", ";").split(";"))):
             name, _, caption = entry.partition("|")
-            src = self._find_attachment(name.strip(), occ.main)
+            src, why = self._find_attachment(name.strip(), occ.main)
             if src is None:
-                out.append(Para(f"[첨부 파일을 찾을 수 없음: {name.strip()}]"))
+                out.append(Para(f"[{why}: {name.strip()}]"))
                 continue
             out.append(Picture(self._copy_attachment(src), caption.strip()))
         return out
 
-    def _find_attachment(self, name: str, block: Block) -> Optional[Path]:
-        for base in (Path(block.base_dir), Path.cwd()):
-            p = (base / name)
+    def _find_attachment(self, name: str, block: Block) -> Tuple[Optional[Path], str]:
+        """@첨부 의 그림 파일과, 못 쓰면 그 까닭. 보고서 출력 폴더로 복사되므로 받는 것을 좁힌다(49단계 보안 점검):
+        그림 파일(PICTURE_TYPES)만, 절대 경로는 받지 않고, 소스 파일이 있는 폴더나 연 프로젝트 폴더 아래만.
+        (그렇지 않으면 남이 만든 저장소의 주석 하나로 PC 의 다른 파일이 보고서에 복사된다)"""
+        rel = Path(name)
+        if rel.drive or rel.root:
+            return None, "첨부하지 않음(절대 경로는 받지 않음)"
+        if rel.suffix.lower() not in PICTURE_TYPES:
+            return None, "첨부하지 않음(그림 파일만: " + ", ".join(PICTURE_TYPES) + ")"
+        base = Path(block.base_dir) if block.base_dir else Path.cwd()
+        for folder in (base, Path.cwd()):
+            p = folder / rel
             if p.is_file():
-                return p
-        return None
+                if inside(p, (base,) + tuple(self.options.roots)):
+                    return p, ""
+                return None, "첨부하지 않음(소스·프로젝트 폴더 밖)"
+        return None, "첨부 파일을 찾을 수 없음"
 
     def _copy_attachment(self, src: Path) -> Path:
         key = str(src.resolve())

@@ -27,13 +27,49 @@ class HistoryError(Exception):
     pass
 
 
+_TEXT_KEYS = ("시각", "메모", "제목", "매뉴얼 판", "도구 버전")
+_COUNT_KEYS = ("예외사유", "발생 위치", "오류")
+_CHANGE_KEYS = ("추가", "변경", "삭제")
+
+
+def _count(value: object) -> int:
+    try:
+        return max(0, int(value))          # bool·실수·숫자 글자도 정수로. 숫자가 아니면 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _clean_version(v: object) -> Optional[dict]:
+    """판 목록의 한 줄을 정해진 모양으로 고른다. 목록 파일은 출력 폴더(형상관리되는 저장소 안)에 있어 누구나 고칠 수
+    있으므로 그대로 믿지 않는다: 판 번호·개수는 정수, 글은 글, 폴더는 이력/ 바로 아래의 이름 하나만 받는다.
+    화면이 이 값을 HTML 에 넣고 폴더 이름으로 경로를 만들기 때문이다(49단계 보안 점검)."""
+    if not isinstance(v, dict):
+        return None
+    try:
+        number = int(v.get("판"))
+    except (TypeError, ValueError):
+        return None
+    folder = v.get("폴더")
+    if (not isinstance(folder, str) or not folder or folder in (".", "..")
+            or any(c in folder for c in "/\\:") or Path(folder).name != folder):
+        return None
+    clean = {"판": number, "폴더": folder}
+    clean.update({k: str(v[k]) for k in _TEXT_KEYS if k in v and v[k] is not None})
+    clean.update({k: _count(v.get(k)) for k in _COUNT_KEYS})
+    changes = v.get("변경") if isinstance(v.get("변경"), dict) else {}
+    clean["변경"] = {k: _count(changes.get(k)) for k in _CHANGE_KEYS}
+    return clean
+
+
 def versions(out: Path) -> List[dict]:
-    """보관한 판 목록 (오래된 것부터). 목록 파일이 없거나 읽을 수 없으면 빈 목록."""
+    """보관한 판 목록 (오래된 것부터). 목록 파일이 없거나 읽을 수 없으면 빈 목록. 모양이 다른 줄은 뺀다."""
     try:
         data = json.loads((out / HISTORY_DIR / INDEX_FILE).read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         return []
-    return [v for v in data.get("판", []) if isinstance(v, dict)] if isinstance(data, dict) else []
+    if not isinstance(data, dict) or not isinstance(data.get("판"), list):
+        return []
+    return [c for c in (_clean_version(v) for v in data["판"]) if c is not None]
 
 
 def _load(path: Path) -> Optional[dict]:

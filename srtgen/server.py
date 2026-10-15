@@ -9,7 +9,6 @@ import atexit
 import base64
 import binascii
 import json
-import mimetypes
 import os
 import secrets
 import shutil
@@ -24,13 +23,15 @@ from typing import Dict, List, Optional, Tuple
 
 from . import about as about_info
 from . import NAME, NAME_FULL, NAME_KO, VERSION_LABEL, __version__, codeimg, criteria, history, imageinfo, render_md, settings
-from .forms import Builder, Options, report_heading
+from .forms import Builder, Options, project_roots, report_heading
+from .forms import inside as forms_inside
 from .registry import Registry, key_of
 from .registry import now as registry_now
 from .registry import summary as registry_summary
 from .generate import FORMATS, write_outputs
 from .lexer import language_for
 from .notation import TEST_TYPES
+from .progress import Listener, Progress
 from .project import Node, ProjectError, Workspace, detect_projects, open_paths, project_kind, project_rank
 from .scanner import Block, Diagnostic, ScanResult, scan_entries
 from .writeback import (ATTACH_DIR, ATTACH_TYPES, Conflict, FieldEdit, WritebackError, apply_edits,
@@ -68,18 +69,25 @@ def open_in_explorer(path: Path) -> None:
 WEB_DIR = Path(__file__).parent / "web"
 # 화면(web/index.html 의 API_LEVEL)과 맞춰 올리는 번호. 화면은 요청마다 새로 읽지만 서버는 다시 띄워야 바뀌므로,
 # 예전 서버가 남아 있으면 화면이 이 번호로 알아채고 "다시 실행하십시오"를 보인다. 상태의 모양을 바꾸면 둘 다 올린다.
-API_LEVEL = 8
+API_LEVEL = 10
 RULES_FILE = Path.home() / ".srtgen" / "rules.json"      # 사용자가 넣는 규칙 목록의 기본 위치
 RULES_INFO_KEY = "_정보"            # 규칙 목록 파일 안에서 기준별 버전·출처를 두는 키 (목록이 아님)
 RULES_FILE_MAX = 2 * 1024 * 1024    # 불러오는 규칙 목록 파일(CSV·TXT)의 최대 크기
 MAX_BODY = 16 * 1024 * 1024       # 그림 올리기(10MB, base64)를 받을 수 있는 크기
+# 파일 주소가 내주는 형식. 윈도우 레지스트리의 형식 설정에 기대지 않고 여기서 정한다. 목록 밖(.html, .svg 등)은 내지 않는다
+IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+               ".bmp": "image/bmp"}
+OUTPUT_TYPES = {".md": "text/plain; charset=utf-8", ".json": "text/plain; charset=utf-8",
+                ".txt": "text/plain; charset=utf-8", ".hwpx": "application/octet-stream", **IMAGE_TYPES}
+SCRIPT_TYPES = {".js": "text/javascript; charset=utf-8"}
 
 
 class App:
     def __init__(self, sources: List[Path], out: Optional[Path] = None, project: Optional[str] = None,
                  csc: Optional[str] = None, excludes: Tuple[str, ...] = (), encoding: Optional[str] = None,
                  rules: Optional[Path] = None, csci: Optional[str] = None,
-                 overrides: Optional[Dict[str, Optional[str]]] = None, projects: Optional[Path] = None):
+                 overrides: Optional[Dict[str, Optional[str]]] = None, projects: Optional[Path] = None,
+                 on_progress: Optional[Listener] = None):
         self.inputs = [Path(s) for s in sources]      # 연 폴더, 프로젝트 파일, 소스 파일
         self.rules_path = Path(rules) if rules else RULES_FILE    # 사용자가 넣는 규칙 번호·규칙명 목록
         self.registry = Registry(projects)            # 이 PC 에서 다룬 프로젝트 목록
@@ -106,7 +114,12 @@ class App:
         self.preview_dir = Path(tempfile.mkdtemp(prefix="srtgen_preview_"))
         atexit.register(shutil.rmtree, self.preview_dir, True)
         self.workspace = Workspace([])
+        # 소스를 읽는 중의 진행 상황(화면의 진행 막대가 GET /api/progress 로 묻는다). 처음 읽을 때는 콘솔에도 보인다
+        self.progress = Progress()
+        if on_progress:
+            self.progress.listeners.append(on_progress)
         self.result: ScanResult = self.rescan()
+        self.progress.listeners.clear()
         self._remember(opened=registry_now())
 
     def _load_info(self, overrides: Dict[str, Optional[str]], out: Optional[Path] = None) -> Optional[Path]:
@@ -114,7 +127,12 @@ class App:
         directory = settings.settings_dir(self.inputs)
         values, self.info_error = settings.resolve(directory, overrides)
         self.project, self.csci, self.csc = values["project"], values["csci"], values["csc"]
-        self.out = out or settings.out_dir(directory)
+        # srtgen.json 이 프로젝트 밖 출력 폴더를 가리키면 쓰지 않고 알린다. 사용자가 화면에서 고르면 그때 쓴다
+        self.out_refused: Optional[Path] = None
+        if out:
+            self.out = out
+        else:
+            self.out, self.out_refused = settings.out_choice(directory)
         return directory
 
     def _remember(self, **values) -> None:
@@ -146,10 +164,20 @@ class App:
         return {"state": self.state()}
 
     def rescan(self) -> ScanResult:
-        """프로젝트 파일을 다시 읽어 소스 구성을 만들고 표기법을 수집한다."""
-        self.workspace = open_paths(self.inputs, self.excludes)
-        self.result = scan_entries(self.workspace.entries(), self.encoding)
-        self.stamp = self._stamp()
+        """프로젝트 파일을 다시 읽어 소스 구성을 만들고 표기법을 수집한다. 진행 상황을 self.progress 에 적는다."""
+        own = not self.progress.busy          # 보고서 만들기처럼 더 큰 작업 안에서 부르면 그 작업이 끝을 맺는다
+        if own:
+            self.progress.start("프로젝트 파일 읽는 중")
+        else:
+            self.progress.phase("프로젝트 파일 읽는 중")
+        try:
+            self.workspace = open_paths(self.inputs, self.excludes)
+            self.progress.phase("소스 읽는 중")
+            self.result = scan_entries(self.workspace.entries(), self.encoding, self.progress.update)
+            self.stamp = self._stamp()
+        finally:
+            if own:
+                self.progress.finish()
         return self.result
 
     def _stamp(self) -> Dict[str, Optional[Tuple[int, int]]]:
@@ -195,13 +223,15 @@ class App:
         return {
             "version": __version__,
             "name": NAME, "name_full": NAME_FULL, "name_ko": NAME_KO,   # 보이는 이름
-            "version_label": VERSION_LABEL,                              # 보이는 버전 (ver.0.01)
+            "version_label": VERSION_LABEL,                              # 보이는 버전 (ver.0.02 등)
             "manual": criteria.MANUAL, "manual_edition": criteria.MANUAL_EDITION,   # 이 도구 버전이 따르는 매뉴얼
             "inputs": [str(s.resolve()) for s in self.inputs],
             "projects": [{"name": p.name, "label": p.label, "origin": str(p.origin), "warnings": p.warnings}
                          for p in self.workspace.projects],
             "tree": [self._node(p.root) for p in self.workspace.projects],
             "out": str(self.out.resolve()),
+            # srtgen.json 이 가리켰지만 프로젝트 밖이라 쓰지 않은 출력 폴더 (화면이 알리고, 고르면 쓴다)
+            "out_refused": str(self.out_refused) if self.out_refused else "",
             "history": history.versions(self.out),            # 보관한 보고서 판 (오래된 것부터)
             "registry": self.registry.listing(),              # 이 PC 에서 다룬 프로젝트 목록
             "registry_path": str(self.registry.path),
@@ -396,8 +426,10 @@ class App:
                     if block.file == rel:
                         referenced.update(e.split("|")[0].strip()
                                           for e in block.fields.get("첨부", "").replace("\n", ";").split(";"))
-        inside = target.parent == (source.parent / ATTACH_DIR).resolve()
-        return target if target.is_file() and (inside or ref in referenced) else None
+        in_attach_dir = target.parent == (source.parent / ATTACH_DIR).resolve()
+        # 주석이 가리켜도 소스 폴더·연 프로젝트 폴더 밖은 내주지 않는다(49단계 보안 점검)
+        allowed = forms_inside(target, (source.parent,) + project_roots(self.workspace.projects))
+        return target if target.is_file() and allowed and (in_attach_dir or ref in referenced) else None
 
     # ---- 소스에 반영 ----
     def save(self, payload: dict) -> dict:
@@ -523,17 +555,24 @@ class App:
         if not formats:
             raise WritebackError("출력 형식을 하나 이상 고르십시오.")
         with self.lock:
+            # 사용자가 화면에서 "그 폴더에 만들기"를 골랐다: srtgen.json 이 가리킨 프로젝트 밖 폴더를 이번 연 동안 쓴다
+            if payload.get("use_refused_out") and self.out_refused is not None:
+                self.out, self.out_refused = self.out_refused, None
             self.project = str(payload.get("project") or self.project)
             if "csci" in payload:                     # CSCI명은 비워 둘 수 있다 (제목에서 빠진다)
                 self.csci = str(payload.get("csci") or "")
             self.csc = str(payload.get("csc") or self.csc)
-            result = self.rescan()
-            code_mode = "image" if payload.get("code") == "image" else "text"
+            self.progress.start("보고서 준비 중")
             try:
+                result = self.rescan()
+                self.progress.phase("보고서 쓰는 중")
+                code_mode = "image" if payload.get("code") == "image" else "text"
                 written = write_outputs(result, self.out, self.project, self.csc, formats, code_mode,
                                         bool(payload.get("compact")), self.workspace.projects, csci=self.csci)
             except OSError as e:
                 raise WritebackError(f"보고서를 쓸 수 없습니다 ({e.strerror}): {self.out}")
+            finally:
+                self.progress.finish()
             title = report_heading(self.project, self.csci, self.csc)
             # 지난 판과 비교 (판으로 보관하지 않아도 보여 준다)
             current = json.loads((self.out / history.DATA_FILE).read_text(encoding="utf-8"))
@@ -561,7 +600,8 @@ class App:
             if item is None:
                 return "<p>예외사유를 찾을 수 없습니다.</p>"
             # 그림은 미리보기 전용 임시 폴더에 복사한다(출력 폴더에 쓰지 않는다). 화면은 /images/ 로 받는다.
-            builder = Builder(Options(project=self.project, csci=self.csci, csc=self.csc, out_dir=self.preview_dir))
+            builder = Builder(Options(project=self.project, csci=self.csci, csc=self.csc, out_dir=self.preview_dir,
+                                      roots=project_roots(self.workspace.projects)))
             report = builder.report(item.test, [item])
         title = "<br>".join(render_md._esc(t) for t in report.title)
         notes = "".join(f"<p class='note'>{render_md._esc(n)}</p>" for n in report.notes)
@@ -582,6 +622,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        # 다른 웹사이트가 이 화면을 틀(iframe) 안에 넣어 누르게 하지 못하게 한다(클릭재킹. 49단계 보안 점검).
+        # Host 검사는 틀 안에서도 127.0.0.1 로 오므로 이것으로는 막히지 않는다.
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Content-Security-Policy", "frame-ancestors 'none'; object-src 'none'; base-uri 'none'")
+        self.send_header("Referrer-Policy", "no-referrer")
         for k, v in (extra or {}).items():
             self.send_header(k, v)
         self.end_headers()
@@ -594,25 +639,23 @@ class Handler(BaseHTTPRequestHandler):
         port = self.server.server_address[1]
         return self.headers.get("Host", "") in (f"127.0.0.1:{port}", f"localhost:{port}")
 
-    def _file(self, base: Path, rel: str) -> None:
+    def _file(self, base: Path, rel: str, types: Dict[str, str]) -> None:
+        """base 아래의 파일을 내준다. 정해진 형식(types: 확장자 -> Content-Type)만 낸다: 출력 폴더 등에 누가 넣어 둔
+        .html·.svg 를 이 화면과 같은 출처의 문서로 내주면 스크립트가 돌 수 있기 때문이다(49단계 보안 점검)."""
         try:
             path = (base / rel).resolve()
             path.relative_to(base.resolve())
         except (ValueError, OSError):
             return self._json(404, {"error": "없는 경로입니다."})
+        suffix = path.suffix.lower()
+        if suffix not in types:
+            return self._json(404, {"error": "내주지 않는 형식입니다."})
         if not path.is_file():
             return self._json(404, {"error": "없는 파일입니다."})
-        suffix = path.suffix.lower()
-        if suffix in (".md", ".json", ".txt"):
-            ctype = "text/plain; charset=utf-8"
-        elif suffix == ".js":            # 윈도우 레지스트리의 형식 설정에 기대지 않는다
-            ctype = "text/javascript; charset=utf-8"
-        else:
-            ctype = mimetypes.types_map.get(suffix, "application/octet-stream")
         extra = {}
         if suffix == ".hwpx":
             extra["Content-Disposition"] = "attachment; filename*=UTF-8''" + urllib.parse.quote(path.name)
-        self._send(200, path.read_bytes(), ctype, extra)
+        self._send(200, path.read_bytes(), types[suffix], extra)
 
     def do_GET(self) -> None:
         if not self._host_ok():
@@ -626,6 +669,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, self.app.state())
         if path == "/api/changed":
             return self._json(200, {"changed": self.app.changed()})
+        if path == "/api/progress":                 # 소스를 읽는 중의 진행 상황 (잠금 없이 읽는다)
+            return self._json(200, self.app.progress.snapshot())
         if path == "/api/about":                    # 설정 ▸ 정보 (읽기만 한다)
             return self._json(200, self.app.about())
         if path == "/api/doc":                      # 고지 전문 등 정해진 문서만 (about.document)
@@ -645,11 +690,11 @@ class Handler(BaseHTTPRequestHandler):
                      else imageinfo.media_type(target) or "application/octet-stream")
             return self._send(200, target.read_bytes(), ctype)
         if path.startswith("/vendor/"):          # 함께 배포하는 외부 스크립트 (THIRD_PARTY.md)
-            return self._file(WEB_DIR / "vendor", path[len("/vendor/"):])
-        if path.startswith("/out/"):
-            return self._file(self.app.out, path[len("/out/"):])
+            return self._file(WEB_DIR / "vendor", path[len("/vendor/"):], SCRIPT_TYPES)
+        if path.startswith("/out/"):             # 만든 보고서: 요약·md·json, hwpx(내려받기), 그림
+            return self._file(self.app.out, path[len("/out/"):], OUTPUT_TYPES)
         if path.startswith("/images/"):          # 양식 미리보기 안의 그림 (미리보기 전용 임시 폴더)
-            return self._file(self.app.preview_dir / "images", path[len("/images/"):])
+            return self._file(self.app.preview_dir / "images", path[len("/images/"):], IMAGE_TYPES)
         self._json(404, {"error": "없는 주소입니다."})
 
     def do_POST(self) -> None:

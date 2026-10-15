@@ -1,6 +1,70 @@
+# SRT-ARA 도구 저장소용 .gitignore
+# 사업 프로젝트 저장소에 그대로 쓰지 않는다. 거기서는 srt_report/(보고서·판 이력)와 srtgen.json 을 소스와 함께 커밋한다.
+
+# 1. Python 캐시와 빌드 산출물
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+
+# 2. 가상환경
+.venv/
+venv/
+env/
+
+# 3. 환경 변수 파일
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# 4. 개인 키와 인증서
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+
+# 5. 인증 정보
+secrets.json
+credentials.json
+service-account*.json
+*secret*.local.json
+*credential*.local.json
+
+# 6. 이 PC 에만 쓰는 설정
+*.local.json
+*.local.yaml
+*.local.yml
+*.local.toml
+
+# 7. SRT-ARA 가 만드는 것 (도구 저장소에서 예제를 돌리면 생김)
 srt_report/
 .claude/
 examples/out/
 examples/out_image/
+
+# 8. 로그와 임시 파일
+*.log
+*.tmp
+*.bak
+*.swp
+.DS_Store
+Thumbs.db
+
+# 9. 편집기·개발도구 설정
+.vscode/
+.idea/
+
+# 10. 보안 점검 보고서
+gitleaks-report.json
+gitleaks-report.*

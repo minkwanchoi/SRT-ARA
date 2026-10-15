@@ -202,6 +202,20 @@ dialog::backdrop { background: rgba(10, 15, 22, .45); }
 #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #1c2430; color: #fff;
   padding: 9px 16px; border-radius: 6px; max-width: 80vw; display: none; z-index: 10; }
 #toast.error { background: var(--err); color: #fff; }
+/* 소스를 읽는 중의 진행 막대: 0.4초 넘게 걸리는 열기·다시 읽기·보고서 만들기에서만 보인다 */
+#busy { position: fixed; inset: 0; background: rgba(20, 30, 45, .28); z-index: 20; display: flex;
+  align-items: flex-start; justify-content: center; padding-top: 18vh; }
+#busy[hidden] { display: none; }
+#busy .box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 22px;
+  width: min(520px, 90vw); box-shadow: 0 8px 28px rgba(20, 30, 45, .25); }
+#busy .phase { font-weight: 600; margin-bottom: 10px; }
+#busy .track { height: 10px; border-radius: 5px; background: var(--line-soft); overflow: hidden; }
+#busy .fill { height: 100%; width: 0; background: var(--accent); border-radius: 5px; transition: width .2s; }
+#busy .track.indeterminate .fill { width: 30%; animation: busy-slide 1.1s ease-in-out infinite; }
+@keyframes busy-slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+#busy .count { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+#busy .file { margin-top: 4px; font: 12px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; direction: rtl; text-align: left; }
 
 /* 소스 트리 */
 .tree-opts { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
@@ -590,6 +604,15 @@ a.folder-link::before { content: "📂 "; text-decoration: none; display: inline
 </dialog>
 
 <div id="toast" role="status"></div>
+<div id="busy" hidden>
+  <div class="box" role="dialog" aria-modal="true" aria-labelledby="busy-phase">
+    <div class="phase" id="busy-phase">소스 읽는 중</div>
+    <div class="track" id="busy-track" role="progressbar" aria-labelledby="busy-phase" aria-valuemin="0" aria-valuemax="100">
+      <div class="fill" id="busy-fill"></div></div>
+    <div class="count"><span id="busy-count"></span><span id="busy-time"></span></div>
+    <div class="file" id="busy-file"></div>
+  </div>
+</div>
 
 <script>
 "use strict";
@@ -628,19 +651,58 @@ function toast(msg, isError) {
   toast.timer = setTimeout(() => { t.style.display = "none"; }, isError ? 7000 : 3000);
 }
 
+// 소스를 다시 읽는 요청: 오래 걸리면 진행 막대를 보인다
+const LONG_REQUESTS = ["/api/open", "/api/rescan", "/api/generate"];
+
 async function api(path, payload) {
   const opt = payload === undefined ? {} : {
     method: "POST", headers: {"Content-Type": "application/json", "X-SRT-Token": TOKEN},
     body: JSON.stringify(payload)};
-  const res = await fetch(path, opt);
-  const data = await res.json();
-  if (data.state) setState(data.state);
-  if (!res.ok) throw new Error(data.error || "요청을 처리하지 못했습니다.");
-  return data;
+  const watch = LONG_REQUESTS.includes(path) ? busyWatch() : null;
+  try {
+    const res = await fetch(path, opt);
+    const data = await res.json();
+    if (data.state) setState(data.state);
+    if (!res.ok) throw new Error(data.error || "요청을 처리하지 못했습니다.");
+    return data;
+  } finally {
+    if (watch) watch.stop();
+  }
+}
+
+// 진행 막대: 요청이 0.4초 안에 끝나면 보이지 않는다. 그 뒤로는 0.3초마다 서버에 진행을 묻는다(GET /api/progress).
+// 진행을 묻는 요청은 서버의 다른 스레드가 잠금 없이 답하므로 소스를 읽는 중에도 돌아온다.
+function busyWatch() {
+  let stopped = false, timer = null;
+  const tick = async () => {
+    if (stopped) return;
+    try {
+      const p = await (await fetch("/api/progress")).json();
+      if (!stopped && p.busy) showBusy(p);
+    } catch (e) { /* 예전 서버(진행 주소 없음)이거나 잠시 응답이 없으면 다음에 다시 묻는다 */ }
+    if (!stopped) timer = setTimeout(tick, 300);
+  };
+  timer = setTimeout(tick, 400);
+  return {stop() { stopped = true; clearTimeout(timer); $("busy").hidden = true; }};
+}
+
+function showBusy(p) {
+  const known = p.total > 0;
+  const pct = known ? Math.min(100, Math.floor(p.done * 100 / p.total)) : 0;
+  $("busy-phase").textContent = p.phase || "처리 중";
+  $("busy-track").classList.toggle("indeterminate", !known);
+  $("busy-fill").style.width = known ? pct + "%" : "";
+  if (known) $("busy-track").setAttribute("aria-valuenow", pct);
+  else $("busy-track").removeAttribute("aria-valuenow");
+  $("busy-count").textContent = known
+    ? `소스 ${p.done.toLocaleString()} / ${p.total.toLocaleString()}개 (${pct}%)` : "";
+  $("busy-time").textContent = p.elapsed >= 1 ? `${Math.round(p.elapsed)}초` : "";
+  $("busy-file").textContent = p.file || "";
+  $("busy").hidden = false;
 }
 
 // 서버(server.py 의 API_LEVEL)와 같아야 하는 번호. 다르면 화면만 새것이고 서버는 예전 것이다.
-const API_LEVEL = 8;
+const API_LEVEL = 10;
 
 function staleServerNotice(level) {
   if (level === API_LEVEL || $("stale-server")) return;
@@ -732,10 +794,10 @@ function projectListHtml() {
         + `<col style="width:150px"><col style="width:160px"></colgroup><thead><tr><th>CSC명</th><th>예외사유</th><th>열어 본 때</th><th>보고서</th><th></th></tr></thead><tbody>`;
       entries.forEach((e) => {
         const cls = [e.key === S.current ? "current" : "", e.exists ? "" : "missing"].join(" ").trim();
-        const report = e.generated ? `${esc(e.generated)}${e.version ? ` · v${e.version}` : ""}` : "—";
+        const report = e.generated ? `${esc(e.generated)}${e.version ? ` · v${esc(e.version)}` : ""}` : "—";
         html += `<tr class="${cls}"><td><strong>${esc(e.csc || "(CSC명 없음)")}</strong>
             <div class="path">${e.inputs.map(esc).join("<br>")}${e.exists ? "" : " — 찾을 수 없습니다"}</div></td>
-          <td>${e.items ?? 0}건${e.errors ? ` <span class="badge err">오류 ${e.errors}</span>` : ""}</td>
+          <td>${esc(e.items ?? 0)}건${e.errors ? ` <span class="badge err">오류 ${esc(e.errors)}</span>` : ""}</td>
           <td>${esc(e.opened || "")}</td><td>${report}</td>
           <td class="acts">${e.key === S.current ? "<span class=\"namehint\">지금 연 것</span>"
             : `<button type="button" data-p-open="${esc(e.key)}" ${e.exists ? "" : "disabled"}>열기</button>`}
@@ -929,8 +991,9 @@ function renderHistory() {
       const ed = v["매뉴얼 판"] || "";
       const other = ed && S.manual_edition && ed !== S.manual_edition;
       const basis = ed ? `${esc(ed)}${v["도구 버전"] ? ` · ${esc(S.name || "SRT-ARA")} ver.${esc(v["도구 버전"])}` : ""}${other ? ' <span class="badge warn" title="지금 도구의 기준과 다릅니다">다른 기준</span>' : ""}` : "기록 없음";
-      return `<tr><td>v${v["판"]}</td><td>${esc(v["시각"])}</td><td>${esc(v["메모"] || "")}</td><td>${basis}</td><td>${v["예외사유"]}건${v["오류"] ? ` (오류 ${v["오류"]})` : ""}</td>
-        <td>추가 ${ch["추가"] ?? 0} · 변경 ${ch["변경"] ?? 0} · 삭제 ${ch["삭제"] ?? 0}</td>
+      // 판 목록은 저장소 안의 파일에서 오므로 숫자 자리도 esc 를 거친다 (서버도 정수로 고른다)
+      return `<tr><td>v${esc(v["판"])}</td><td>${esc(v["시각"] || "")}</td><td>${esc(v["메모"] || "")}</td><td>${basis}</td><td>${esc(v["예외사유"] ?? 0)}건${v["오류"] ? ` (오류 ${esc(v["오류"])})` : ""}</td>
+        <td>추가 ${esc(ch["추가"] ?? 0)} · 변경 ${esc(ch["변경"] ?? 0)} · 삭제 ${esc(ch["삭제"] ?? 0)}</td>
         <td><a href="${outHref(dir + "변경내역.md")}" target="_blank" rel="noopener">변경내역</a>
           · ${folderLink(dir, "폴더")}</td></tr>`;
     }).join("") + "</tbody></table>";
@@ -1141,7 +1204,7 @@ function renderScope() {
     html += `<div class="note-box warning">${esc(p.name)} · ${esc(w)}</div>`;
   }));
   S.diagnostics.filter((d) => files.has(d.file)).slice(0, node && node.k === "f" ? 50 : 0).forEach((d) => {
-    html += `<div class="note-box ${d.level}">${d.level === "error" ? "오류" : "경고"} · ${d.line}행 · ${esc(d.message)}</div>`;
+    html += `<div class="note-box ${d.level === "error" ? "error" : "warning"}">${d.level === "error" ? "오류" : "경고"} · ${esc(d.line)}행 · ${esc(d.message)}</div>`;
   });
 
   if (!rows.length) {
@@ -1207,7 +1270,7 @@ function renderProblems() {
   groups.forEach((g) => {
     const items = [...new Set(g.list.map((d) => d.item).filter((k) => k && itemOf(k)))];
     const open = fixing === g.key && g.comment;
-    html += `<div class="card problem" data-group="${esc(g.key)}"><div class="phead"><span class="mono">${esc(g.file)}:${g.line}</span>
+    html += `<div class="card problem" data-group="${esc(g.key)}"><div class="phead"><span class="mono">${esc(g.file)}:${esc(g.line)}</span>
         <span class="spacer"></span>
         ${items.map((k) => `<button data-item="${esc(k)}">${esc(itemOf(k).tag)} 내용 편집</button>`).join("")}
         ${g.comment ? `<button data-fix="${esc(g.key)}" class="${open ? "" : "primary"}">${open ? "닫기" : "주석 고치기"}</button>` : ""}</div>`;
@@ -1481,7 +1544,7 @@ function renderEdit(item) {
   let html = "";
 
   diagnosticsOf(item).forEach((d) => {
-    html += `<div class="note-box ${d.level}">${d.level === "error" ? "오류" : "경고"} · ${esc(d.file)}:${d.line} · ${esc(d.message)}
+    html += `<div class="note-box ${d.level === "error" ? "error" : "warning"}">${d.level === "error" ? "오류" : "경고"} · ${esc(d.file)}:${esc(d.line)} · ${esc(d.message)}
       ${d.comment ? `<button class="linkish" data-goto-fix="${esc(d.file + "|" + d.comment.cid)}">주석 원문 고치기</button>` : ""}</div>`;
   });
   if (!rep.main.editable) {
@@ -1788,7 +1851,7 @@ function showRules() {
       const mine = Object.keys(S.user_rules[n] || {}).length;
       const version = ref?.version || (S.user_rule_info || {})[n]?.["버전"] || "";
       const parts = [version, builtin && `목록 ${builtin}개`, mine && `넣은 규칙 ${mine}개`].filter(Boolean);
-      return `<option value="${esc(n)}">${esc(n)}${parts.length ? ` (${parts.join(", ")})` : ""}</option>`;
+      return `<option value="${esc(n)}">${esc(n)}${parts.length ? ` (${esc(parts.join(", "))})` : ""}</option>`;
     }).join("")}</optgroup>`
     + (weak.length ? `<optgroup label="취약점 점검">${weak.map((l) =>
       `<option value="ref:${esc(l.name)}">${esc(l.name)} (${l.version ? esc(l.version) + ", " : ""}목록 ${l.rules.length}개)</option>`).join("")}</optgroup>` : "");
@@ -2151,12 +2214,20 @@ function renderReport() {
   const pending = Object.keys(drafts).length;
   $("g-notices").innerHTML = errorNotice("보고서는 만들 수 있지만 그 예외사유는 빠지거나 틀릴 수 있습니다.")
     + (pending ? `<div class="note-box warning">소스에 반영하지 않은 편집이 ${pending}건 있습니다. 반영하지 않은 내용은 보고서에 들어가지 않습니다.
-        <button type="button" data-go="scope">2 예외사유 검토·편집으로</button></div>` : "");
+        <button type="button" data-go="scope">2 예외사유 검토·편집으로</button></div>` : "")
+    // srtgen.json 이 프로젝트 폴더 밖을 출력 폴더로 적었으면 쓰지 않았다고 알리고, 사용자가 고를 때만 그곳에 쓴다
+    + (S.out_refused ? `<div class="note-box warning">srtgen.json의 출력 폴더 <span class="mono">${esc(S.out_refused)}</span>는
+        프로젝트 폴더 밖이라 쓰지 않고 위의 출력 폴더에 만듭니다. 남이 만든 프로젝트라면 그대로 두십시오.
+        <label><input type="checkbox" id="g-use-refused" ${useRefusedOut ? "checked" : ""}> 이번에는 그 폴더에 만들기</label></div>` : "");
   renderHistory();
 }
+let useRefusedOut = false;     // "그 폴더에 만들기"를 골랐는가 (다시 그려도 지키도록 따로 둔다)
 $("report").addEventListener("click", (e) => {
   const go = e.target.closest("[data-go]");
   if (go) goStep(go.dataset.go);
+});
+$("report").addEventListener("change", (e) => {
+  if (e.target.id === "g-use-refused") useRefusedOut = e.target.checked;
 });
 
 $("g-run").addEventListener("click", async () => {
@@ -2168,11 +2239,13 @@ $("g-run").addEventListener("click", async () => {
     const lastBefore = S.history.length ? S.history[S.history.length - 1] : null;
     const res = await api("/api/generate", {
       formats, issue: $("g-issue").checked, note: $("g-note").value.trim(),
+      use_refused_out: !!S.out_refused && useRefusedOut,
       code: document.querySelector('input[name="g-code"]:checked').value, compact: $("g-compact").checked});
+    useRefusedOut = false;
     const kb = (n) => (n < 1024 ? n + " B" : (n / 1024).toFixed(1) + " KB");
     const ch = res.changes;
     const since = lastBefore
-      ? `<div>지난 판(v${lastBefore["판"]}, ${esc(lastBefore["시각"])}) 대비: 추가 ${ch["추가"]}건, 변경 ${ch["변경"]}건, 삭제 ${ch["삭제"]}건</div>` : "";
+      ? `<div>지난 판(v${esc(lastBefore["판"])}, ${esc(lastBefore["시각"] || "")}) 대비: 추가 ${esc(ch["추가"])}건, 변경 ${esc(ch["변경"])}건, 삭제 ${esc(ch["삭제"])}건</div>` : "";
     $("g-result").innerHTML = (res.errors
       ? `<div class="note-box error">잘못 쓴 예외사유 주석이 ${res.errors}건 있습니다. "1 잘못 쓴 주석 고치기"에서 확인하십시오.</div>` : "")
       + (res.version ? `<div class="note-box">v${res.version["판"]}(으)로 보관했습니다: 출력 폴더의 ${folderLink("이력/" + res.version["폴더"], "이력/" + res.version["폴더"])}</div>` : "")
