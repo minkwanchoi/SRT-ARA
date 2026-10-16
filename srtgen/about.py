@@ -15,8 +15,8 @@ from typing import Dict, List, Optional
 from . import NAME, NAME_FULL, NAME_KO, VERSION_LABEL, codeimg, criteria
 
 ROOT = Path(__file__).resolve().parent.parent            # 도구 폴더 (THIRD_PARTY.md, LICENSE, licenses/)
-PAPER = ("「무기체계 소프트웨어 신뢰성 시험에서 예외사유의 효율적 관리 방안」, "
-         "한국군사과학기술학회 2018년 종합학술대회")
+PAPER = ("최민관, 김태현 외. (2018). 무기체계 소프트웨어 신뢰성 시험에서 예외사유의 효율적 관리 방안. "
+         "한국군사과학기술학회 2018년 종합학술대회 논문집, 1406–1407.")   # APA 형식(README '참고문헌'과 같게)
 START, END = "<!-- 공개본 제외 시작 -->", "<!-- 공개본 제외 끝 -->"
 _DOC_LINE = re.compile(r"^- `((?:licenses/)?[^`/]+)` — (.+)$")
 

@@ -63,6 +63,15 @@ class ConsoleProgress:
         self.started = time.monotonic()
         self.last = 0.0
         self.shown = False
+        self.ever = False           # 한 번이라도 보였는가 (오래 걸린 작업이었는가)
+
+    def note(self, text: str) -> None:
+        """진행 수를 셀 수 없는 단계(보고서 쓰기 등)를 한 줄로 알린다. close 가 지운다."""
+        if not self.enabled:
+            return
+        self.stream.write("\r" + text[:110].ljust(110))
+        self.stream.flush()
+        self.shown = self.ever = True
 
     def __call__(self, done: int, total: int, file: str) -> None:
         if not self.enabled:
@@ -78,7 +87,7 @@ class ConsoleProgress:
         line = f"{self.label} {done}/{total} ({pct}%) {file}"
         self.stream.write("\r" + line[:110].ljust(110))
         self.stream.flush()
-        self.shown = True
+        self.shown = self.ever = True
 
     def close(self) -> None:
         if self.shown:

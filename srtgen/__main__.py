@@ -148,8 +148,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         if refused is not None:
             print(f"[경고] {settings.FILE_NAME}의 \"{settings.OUT_KEY}\"({refused})가 프로젝트 폴더 밖이라 쓰지 않고 "
                   f"{out}에 만듭니다. 그 폴더에 만들려면 -o 로 직접 지정하십시오.", file=sys.stderr)
-    written = write_outputs(result, out, info["project"], info["csc"], formats, args.code, args.compact,
-                            workspace.projects, csci=info["csci"])
+    # 소스를 읽는 데 진행 줄이 보일 만큼 오래 걸린 작업이면 보고서를 쓰는 동안에도 알린다
+    if console.ever:
+        console.note("보고서 쓰는 중…")
+    try:
+        written = write_outputs(result, out, info["project"], info["csc"], formats, args.code, args.compact,
+                                workspace.projects, csci=info["csci"])
+    finally:
+        console.close()
     if args.issue is not None:
         title = report_heading(info["project"], info["csci"], info["csc"])
         try:

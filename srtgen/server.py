@@ -70,6 +70,8 @@ WEB_DIR = Path(__file__).parent / "web"
 # 화면(web/index.html 의 API_LEVEL)과 맞춰 올리는 번호. 화면은 요청마다 새로 읽지만 서버는 다시 띄워야 바뀌므로,
 # 예전 서버가 남아 있으면 화면이 이 번호로 알아채고 "다시 실행하십시오"를 보인다. 상태의 모양을 바꾸면 둘 다 올린다.
 API_LEVEL = 10
+# 소스에 반영·주석 고치기 뒤에 프로젝트 전체를 다시 읽을 때 진행 창에 보이는 단계 이름
+AFTER_SAVE = "반영 뒤 소스 다시 읽는 중"
 RULES_FILE = Path.home() / ".srtgen" / "rules.json"      # 사용자가 넣는 규칙 목록의 기본 위치
 RULES_INFO_KEY = "_정보"            # 규칙 목록 파일 안에서 기준별 버전·출처를 두는 키 (목록이 아님)
 RULES_FILE_MAX = 2 * 1024 * 1024    # 불러오는 규칙 목록 파일(CSV·TXT)의 최대 크기
@@ -163,8 +165,9 @@ class App:
             self._remember()
         return {"state": self.state()}
 
-    def rescan(self) -> ScanResult:
-        """프로젝트 파일을 다시 읽어 소스 구성을 만들고 표기법을 수집한다. 진행 상황을 self.progress 에 적는다."""
+    def rescan(self, label: str = "소스 읽는 중") -> ScanResult:
+        """프로젝트 파일을 다시 읽어 소스 구성을 만들고 표기법을 수집한다. 진행 상황을 self.progress 에 적는다.
+        label 은 소스를 읽는 동안 진행 창에 보일 단계 이름이다(저장 뒤에 다시 읽을 때는 그렇게 알린다)."""
         own = not self.progress.busy          # 보고서 만들기처럼 더 큰 작업 안에서 부르면 그 작업이 끝을 맺는다
         if own:
             self.progress.start("프로젝트 파일 읽는 중")
@@ -172,7 +175,7 @@ class App:
             self.progress.phase("프로젝트 파일 읽는 중")
         try:
             self.workspace = open_paths(self.inputs, self.excludes)
-            self.progress.phase("소스 읽는 중")
+            self.progress.phase(label)
             self.result = scan_entries(self.workspace.entries(), self.encoding, self.progress.update)
             self.stamp = self._stamp()
         finally:
@@ -389,11 +392,16 @@ class App:
         rel = str(payload["file"])
         with self.lock:
             path = self._source(rel, str(payload.get("sha", "")))
+            # 고친 뒤 프로젝트 전체를 다시 읽으므로 소스가 많으면 오래 걸린다: 진행 막대에 보인다
+            self.progress.start("주석을 고치는 중")
             try:
                 replace_comment(path, rel, language_for(rel), int(payload["cid"]), str(payload["before"]),
                                 str(payload["text"]), str(payload["sha"]))
             finally:
-                self.rescan()
+                try:
+                    self.rescan(AFTER_SAVE)
+                finally:
+                    self.progress.finish()
         return {"saved": [rel], "state": self.state()}
 
     # ---- 근거자료(그림, 다이어그램) ----
@@ -447,12 +455,18 @@ class App:
             for rel, (sha, _edits) in by_file.items():
                 self._source(rel, sha)
             done: List[str] = []
+            # 반영한 뒤 프로젝트 전체를 다시 읽으므로 소스가 많으면 오래 걸린다: 진행 막대에 보인다
+            self.progress.start("소스에 반영하는 중")
             try:
                 for rel, (sha, edits) in by_file.items():
+                    self.progress.update(len(done), len(by_file), rel)
                     apply_edits(self.result.paths[rel], rel, language_for(rel), edits, sha)
                     done.append(rel)
             finally:
-                self.rescan()
+                try:
+                    self.rescan(AFTER_SAVE)
+                finally:
+                    self.progress.finish()
         return {"saved": done, "state": self.state()}
 
     # ---- 소스 열기 ----

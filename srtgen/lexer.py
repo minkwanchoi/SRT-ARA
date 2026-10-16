@@ -136,6 +136,7 @@ class Lexed:
         self.string_spans = string_spans
         self._code_lines: Optional[List[bool]] = None
         self._functions: Optional[List[FunctionRange]] = None
+        self._index: Optional[_FunctionIndex] = None
 
     # ---- 줄 번호 ----
     def line_of(self, offset: int) -> int:
@@ -178,25 +179,30 @@ class Lexed:
         return bool(self.nocomment[c.end:end].strip())
 
     # ---- 함수 범위 ----
+    # 중괄호 구조는 파일마다 한 번 훑지만, 선언부가 함수인지(_signature)와 줄 번호는 물어본 줄 근처의 것만 계산한다
+    # (53단계: 수집 시간의 대부분이 모든 '{' 의 선언부 해석이었다). 결과는 모두 계산하던 때와 같다.
+    def _functions_index(self) -> "_FunctionIndex":
+        if self._index is None:
+            self._index = _FunctionIndex(self)
+        return self._index
+
     @property
     def functions(self) -> List[FunctionRange]:
         if self._functions is None:
-            self._functions = _find_functions(self) if self.lang.brace_functions else []
+            self._functions = self._functions_index().all() if self.lang.brace_functions else []
         return self._functions
 
     def function_at(self, line: int) -> Optional[FunctionRange]:
-        best: Optional[FunctionRange] = None
-        for f in self.functions:
-            if f.start_line <= line <= f.end_line and (best is None or f.start_line >= best.start_line):
-                best = f
-        return best
+        """그 줄을 품은 함수 중 가장 안쪽(선언부가 가장 늦게 시작하는) 것."""
+        if not self.lang.brace_functions:
+            return None
+        return self._functions_index().at(line)
 
     def function_after(self, line: int) -> Optional[FunctionRange]:
-        best: Optional[FunctionRange] = None
-        for f in self.functions:
-            if f.start_line >= line and (best is None or f.start_line < best.start_line):
-                best = f
-        return best
+        """그 줄이나 그 뒤에서 선언부가 시작하는 첫 함수."""
+        if not self.lang.brace_functions:
+            return None
+        return self._functions_index().after(line)
 
 
 _STRUCT_TOKEN = re.compile(r"[{}();]")
@@ -261,37 +267,133 @@ def _signature(masked: str, source: str) -> Optional[str]:
     return " ".join(source.split())
 
 
-def _find_functions(lexed: Lexed) -> List[FunctionRange]:
-    s = lexed.structure
-    funcs: List[FunctionRange] = []
-    stack: List[Tuple[Optional[Tuple[str, int, int]], int]] = []
-    depth = 0
-    boundary = 0
-    for m in _STRUCT_TOKEN.finditer(s):
-        ch = m.group()
-        pos = m.start()
-        if ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth = max(0, depth - 1)
-        elif ch == ";":
-            if depth == 0:
+class _FunctionIndex:
+    """함수 후보(괄호 밖의 '{' 와 그 앞 선언부)를 한 번 훑어 모아 두고, 선언부 해석은 물어볼 때 한다.
+
+    후보 i 의 구간 [boundary, close] 는 서로 겹치지 않거나 한쪽이 다른 쪽을 품는다(중괄호가 짝을 이루므로).
+    그래서 한 위치를 품는 후보는 '그 위치 앞에서 마지막으로 시작한 후보'와 그 바깥 후보들(parent)뿐이다.
+    예전처럼 모든 후보를 해석해 고르던 것과 같은 결과를 내야 한다(tests 의 대조 시험이 지킨다)."""
+
+    def __init__(self, lexed: Lexed):
+        self.lexed = lexed
+        s = lexed.structure
+        self._ranges: dict = {}
+        # 후보마다 [boundary, open, close, seq, parent]:
+        #   boundary 선언부가 시작할 수 있는 곳(앞의 ; { } 바로 뒤), open '{' 위치,
+        #   close 짝 '}' 위치(없으면 None: 함수로 보지 않는다), seq 닫힌 차례(예전 목록의 순서. 같은 조건이면 이 순서로 고른다),
+        #   parent 바로 바깥 후보(-1: 없음)
+        cands: List[list] = []
+        stack: List[Optional[list]] = []        # 열린 '{' 마다 (후보 또는 None), 그 '{' 앞의 괄호 깊이
+        depths: List[int] = []
+        outer = -1                              # 가장 안쪽의 열린 후보
+        depth = 0
+        boundary = 0
+        closed = 0
+        for m in _STRUCT_TOKEN.finditer(s):
+            pos = m.start()
+            ch = s[pos]
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                if depth:
+                    depth -= 1
+            elif ch == ";":
+                if depth == 0:
+                    boundary = pos + 1
+            elif ch == "{":
+                if depth == 0:
+                    cand = [boundary, pos, None, -1, outer]
+                    outer = len(cands)
+                    cands.append(cand)
+                    stack.append(cand)
+                else:
+                    stack.append(None)
+                depths.append(depth)
+                depth = 0
                 boundary = pos + 1
-        elif ch == "{":
-            entry = None
-            if depth == 0:
-                head = s[boundary:pos]
-                sig = _signature(head, lexed.nopp[boundary:pos])
-                if sig:
-                    lead = len(head) - len(head.lstrip())
-                    entry = (sig, lexed.line_of(boundary + lead), lexed.line_of(pos))
-            stack.append((entry, depth))
-            depth = 0
-            boundary = pos + 1
-        else:
-            if stack:
-                entry, depth = stack.pop()
-                if entry:
-                    funcs.append(FunctionRange(entry[0], entry[1], entry[2], lexed.line_of(pos)))
-            boundary = pos + 1
-    return funcs
+            else:
+                if stack:
+                    cand = stack.pop()
+                    depth = depths.pop()
+                    if cand is not None:
+                        cand[2] = pos
+                        cand[3] = closed
+                        closed += 1
+                        outer = cand[4]
+                boundary = pos + 1
+        self.boundary = [c[0] for c in cands]
+        self.open = [c[1] for c in cands]
+        self.close: List[Optional[int]] = [c[2] for c in cands]
+        self.seq = [c[3] for c in cands]
+        self.parent = [c[4] for c in cands]
+
+    def range(self, i: int) -> Optional[FunctionRange]:
+        """후보 i 가 함수 정의이면 그 범위 (계산한 것은 기억한다)."""
+        if i in self._ranges:
+            return self._ranges[i]
+        result = None
+        close = self.close[i]
+        if close is not None:
+            lx = self.lexed
+            b, o = self.boundary[i], self.open[i]
+            head = lx.structure[b:o]
+            sig = _signature(head, lx.nopp[b:o])
+            if sig:
+                lead = len(head) - len(head.lstrip())
+                result = FunctionRange(sig, lx.line_of(b + lead), lx.line_of(o), lx.line_of(close))
+        self._ranges[i] = result
+        return result
+
+    def all(self) -> List[FunctionRange]:
+        order = sorted((self.seq[i], i) for i in range(len(self.open)) if self.close[i] is not None)
+        return [f for f in (self.range(i) for _s, i in order) if f]
+
+    def _containing(self, offset: int) -> List[int]:
+        """offset 을 [boundary, close] 안에 품는 후보들."""
+        i = bisect.bisect_right(self.boundary, offset) - 1
+        found = []
+        while i >= 0:
+            close = self.close[i]
+            if close is not None and close >= offset:
+                found.append(i)
+            i = self.parent[i]
+        return found
+
+    def at(self, line: int) -> Optional[FunctionRange]:
+        starts = self.lexed.line_starts
+        if not 1 <= line <= len(starts):
+            return None
+        lo = starts[line - 1]
+        hi = (starts[line] if line < len(starts) else len(self.lexed.text) + 1) - 1
+        # 그 줄과 겹치는 후보: 줄 처음·끝을 품는 것과 그 줄 안에서 시작하는 것
+        cands = set(self._containing(lo)) | set(self._containing(hi))
+        cands.update(range(bisect.bisect_left(self.boundary, lo), bisect.bisect_right(self.boundary, hi)))
+        best: Optional[FunctionRange] = None
+        best_seq = -1
+        for i in cands:
+            f = self.range(i)
+            if f is None or not f.start_line <= line <= f.end_line:
+                continue
+            # 선언부가 가장 늦게 시작하는 것, 같으면 나중에 닫힌 것 (예전 순서에서 뒤의 것)
+            if best is None or (f.start_line, self.seq[i]) > (best.start_line, best_seq):
+                best, best_seq = f, self.seq[i]
+        return best
+
+    def after(self, line: int) -> Optional[FunctionRange]:
+        starts = self.lexed.line_starts
+        if line > len(starts):
+            return None
+        lo = starts[max(line, 1) - 1]
+        best: Optional[FunctionRange] = None
+        best_seq = -1
+        # 선언부 시작은 '{' 앞이므로 '{' 가 그 줄보다 앞인 후보는 볼 필요가 없다. 후보는 위치 순이라 시작 줄도 순서대로다
+        for i in range(bisect.bisect_left(self.open, lo), len(self.open)):
+            f = self.range(i)
+            if f is None or f.start_line < line:
+                continue
+            if best is not None and f.start_line > best.start_line:
+                break
+            # 시작 줄이 가장 앞인 것, 같으면 먼저 닫힌 것 (예전 순서에서 앞의 것)
+            if best is None or self.seq[i] < best_seq:
+                best, best_seq = f, self.seq[i]
+        return best
