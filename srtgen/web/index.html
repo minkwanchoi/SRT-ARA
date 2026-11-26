@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SRT-ARA · SW 신뢰성시험 분석 보고서 자동화 도구</title>
+<!-- 탭 아이콘: 화면 왼쪽 위 로고(.brand-logo)와 같은 모양. 파일·서버 주소를 더하지 않으려고 글로 넣었다(바깥 자원 아님) -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cstyle%3Erect%7Bfill:%231f5a96%7D@media (prefers-color-scheme:dark)%7Brect%7Bfill:%237fb2e5%7D%7D%3C/style%3E%3Cdefs%3E%3Cmask id='c'%3E%3Cpath fill='%23fff' d='M7 2.5h7.5l5 5V19a2.5 2.5 0 0 1-2.5 2.5H7A2.5 2.5 0 0 1 4.5 19V5A2.5 2.5 0 0 1 7 2.5z'/%3E%3Cpath fill='none' stroke='%23000' stroke-width='1.4' stroke-linecap='round' d='M14.5 2.9v3.3a1.3 1.3 0 0 0 1.3 1.3h3.3'/%3E%3Cpath fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' d='M7.8 11h5M7.8 14.5h4M7.8 18h8.2'/%3E%3Ccircle cx='15.4' cy='14.5' r='1.8' fill='%23000'/%3E%3C/mask%3E%3C/defs%3E%3Crect width='24' height='24' mask='url(%23c)'/%3E%3C/svg%3E">
 <style>
 :root {
   --bg: #f4f5f7; --panel: #ffffff; --line: #d9dde3; --line-soft: #e9ecf0;
@@ -39,7 +41,11 @@ code, .mono { font-family: var(--mono); font-size: 13px; }
 .app { display: grid; grid-template-rows: auto 1fr; height: 100%; }
 header.top { display: flex; align-items: center; gap: 16px; padding: 10px 18px; background: var(--panel);
   border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-header.top h1 { font-size: 16px; margin: 0; white-space: nowrap; display: flex; flex-direction: column; line-height: 1.2; }
+header.top h1 { font-size: 16px; margin: 0; white-space: nowrap; display: flex; align-items: center; gap: 8px; line-height: 1.2; }
+header.top h1 .brand-text { display: flex; flex-direction: column; }
+/* 로고(65단계, 사용자 선택 B): 문서 + 코드 줄과 주석 표시. 소스 주석의 예외사유가 보고서가 된다는 뜻.
+   주색(--accent)을 따르고, 탭 아이콘(<link rel="icon">)은 같은 모양을 색 값으로 따로 적었다 */
+.brand-logo { width: 28px; height: 28px; flex: none; color: var(--accent); }
 /* 약어만으로는 무슨 도구인지 알 수 없어 아래에 한글 설명을 작게 둔다(두 줄 구성, 사용자 확정) */
 header.top h1 .brand-sub { font-size: 11.5px; font-weight: 400; color: var(--muted); }
 header.top h1 .brand-ver { font-size: 11.5px; font-weight: 400; color: var(--muted); }
@@ -161,9 +167,40 @@ table.occ input { min-width: 120px; padding: 4px 7px; }
 .pill { display: inline-block; padding: 0 7px; border-radius: 4px; font-size: 12px; background: var(--line-soft);
   color: var(--muted); white-space: nowrap; }
 .pill.rep { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.tag-note { margin-left: 6px; color: var(--muted); font-size: 12px; font-weight: 400; font-family: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", system-ui, sans-serif; white-space: nowrap; }
+td.tag .tag-note { display: block; margin-left: 0; }     /* 목록에서는 식별자 아래 줄에 (칸이 넓어지지 않게) */
+.field .readonly { padding: 6px 0; white-space: pre-wrap; }
+.field.inherited label { color: var(--muted); }
+table.occ select { padding: 3px 6px; max-width: 220px; }
+.groups { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-bottom: 6px; font-family: var(--mono); font-size: 13px; }
+.groups .linkish { padding: 0; }
+.sugg { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; padding: 8px 0;
+  border-top: 1px solid var(--line-soft); }
+.sugg .sugg-text { min-width: 0; flex: 1 1 0; }
+.sugg .mono { font-family: var(--mono); font-size: 12.5px; margin-left: 6px; }
+.sugg .meta, .sugg .help, .card > .help { color: var(--muted); font-size: 12px; margin-top: 3px; }
+.sugg .sugg-act { display: flex; gap: 6px; flex-shrink: 0; }
 .note-box { border-radius: 6px; padding: 8px 12px; margin-bottom: 8px; font-size: 13px; }
 .note-box.warning { background: var(--warn-soft); color: var(--warn); }
 .note-box.error { background: var(--err-soft); color: var(--err); }
+.note-box.info { background: var(--accent-soft); color: var(--text); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+/* 편집 화면의 이전·다음 예외사유 (지금 목록의 순서, Alt+↑/↓) */
+.item-nav { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+.item-nav button { padding: 4px 10px; }
+/* 키보드만 쓸 때: 처음 Tab 을 누르면 왼쪽 위에 보인다 */
+.skip-link { position: fixed; left: 8px; top: -60px; z-index: 40; background: var(--accent); color: #fff;
+  padding: 8px 14px; border-radius: 6px; text-decoration: none; }
+.skip-link:focus { top: 8px; }
+/* 도움말 (F1) */
+kbd { font: 12px var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px;
+  background: var(--bg); white-space: nowrap; }
+.help-steps { margin: 0 0 14px; padding-left: 20px; font-size: 13px; }
+.help-steps li { margin-bottom: 6px; }
+.help-keys { width: 100%; border-collapse: collapse; font-size: 13px; }
+.help-keys th, .help-keys td { border-top: 1px solid var(--line-soft); padding: 6px 8px; text-align: left; vertical-align: top; }
+.help-keys th { color: var(--muted); font-weight: 600; font-size: 12px; }
+.help-keys td:first-child { white-space: nowrap; }
+.help-keys td.when { color: var(--muted); font-size: 12px; }
 .savebar { position: sticky; bottom: 0; display: flex; align-items: center; gap: 12px; padding: 10px 14px;
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 -2px 8px rgba(0,0,0,.06); }
 .savebar .hint { color: var(--muted); font-size: 12.5px; flex: 1; }
@@ -385,6 +422,16 @@ a.folder-link::before { content: "📂 "; text-decoration: none; display: inline
 .choice button .kind { margin-left: 8px; }
 .choice button.primary .kind { color: inherit; opacity: .85; }
 
+/* Windows 고대비 테마: 지금 고른 것(트리·단계·유형·폴더)을 선택 색으로 칠해 키보드 초점 테두리와 구분한다 */
+@media (forced-colors: active) {
+  .trow[aria-current="true"], .item[aria-current="true"], .step[aria-current="step"], .chip[aria-pressed="true"],
+  .entries li.dir[aria-selected="true"], .tab[aria-selected="true"] {
+    forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .dot { forced-color-adjust: none; background: Highlight; }
+  .brand-logo { forced-color-adjust: none; color: CanvasText; }
+  .badge { border: 1px solid CanvasText; }
+}
+
 @media (max-width: 860px) {
   .app { height: auto; }
   .body { grid-template-columns: minmax(0, 1fr); }
@@ -398,9 +445,17 @@ a.folder-link::before { content: "📂 "; text-decoration: none; display: inline
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link" id="skip-link">본문으로 건너뛰기</a>
 <div class="app">
   <header class="top">
-    <h1 title="SRT-ARA: Software Reliability Test – Analysis Report Automation (SW 신뢰성시험 분석 보고서 자동화 도구)"><span class="brand">SRT-ARA <span class="brand-ver" id="app-ver"></span></span><span class="brand-sub">SW 신뢰성시험 분석 보고서 자동화</span></h1>
+    <h1 title="SRT-ARA: Software Reliability Test – Analysis Report Automation (SW 신뢰성시험 분석 보고서 자동화 도구)">
+      <svg class="brand-logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><defs><mask id="brand-cut">
+        <path fill="#fff" d="M7 2.5h7.5l5 5V19a2.5 2.5 0 0 1-2.5 2.5H7A2.5 2.5 0 0 1 4.5 19V5A2.5 2.5 0 0 1 7 2.5z"/>
+        <path fill="none" stroke="#000" stroke-width="1.4" stroke-linecap="round" d="M14.5 2.9v3.3a1.3 1.3 0 0 0 1.3 1.3h3.3"/>
+        <path fill="none" stroke="#000" stroke-width="1.7" stroke-linecap="round" d="M7.8 11h5M7.8 14.5h4M7.8 18h8.2"/>
+        <circle cx="15.4" cy="14.5" r="1.8" fill="#000"/></mask></defs>
+        <rect width="24" height="24" fill="currentColor" mask="url(#brand-cut)"/></svg>
+      <span class="brand-text"><span class="brand">SRT-ARA <span class="brand-ver" id="app-ver"></span></span><span class="brand-sub">SW 신뢰성시험 분석 보고서 자동화</span></span></h1>
     <!-- 왼쪽에서 오른쪽으로 작업 순서: 프로젝트 → 1 잘못 쓴 주석 고치기 → 2 예외사유 검토·편집 → 3 보고서 만들기 -->
     <div class="menu-wrap">
       <button id="btn-proj" class="proj-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-proj"
@@ -411,13 +466,13 @@ a.folder-link::before { content: "📂 "; text-decoration: none; display: inline
       <div class="menu" id="menu-proj" role="menu" hidden></div>
     </div>
     <nav class="steps" aria-label="작업 순서">
-      <button class="step" data-step="problems" title="잘못 쓴 예외사유 주석을 찾아 고칩니다">
+      <button class="step" data-step="problems" title="잘못 쓴 예외사유 주석을 찾아 고칩니다 (Alt+1)">
         <span class="num">1</span><span class="lbl">잘못 쓴 주석 고치기</span><span class="badge" id="st-problems"></span></button>
       <span class="arrow" aria-hidden="true">›</span>
-      <button class="step" data-step="scope" title="예외사유를 범위별로 보고 내용을 고쳐 소스에 반영합니다">
+      <button class="step" data-step="scope" title="예외사유를 범위별로 보고 내용을 고쳐 소스에 반영합니다 (Alt+2)">
         <span class="num">2</span><span class="lbl">예외사유 검토·편집</span><span class="badge" id="st-scope"></span></button>
       <span class="arrow" aria-hidden="true">›</span>
-      <button class="step" data-step="report" title="양식대로 md·hwpx 보고서를 만들고 판으로 보관합니다">
+      <button class="step" data-step="report" title="양식대로 md·hwpx 보고서를 만들고 판으로 보관합니다 (Alt+3)">
         <span class="num">3</span><span class="lbl">보고서 만들기</span><span class="badge" id="st-report"></span></button>
     </nav>
     <div class="menu-wrap">
@@ -425,6 +480,8 @@ a.folder-link::before { content: "📂 "; text-decoration: none; display: inline
       <div class="menu right" id="menu-settings" role="menu" hidden>
         <button role="menuitem" data-act="rules">규칙 목록…<span class="meta">기준별 규칙 번호·규칙명(CWE 포함)을 보고, MISRA 등은 직접 넣습니다</span></button>
         <button role="menuitem" data-act="projects">프로젝트 목록 관리…<span class="meta">이 PC에서 다룬 사업·프로젝트</span></button>
+        <button role="menuitem" data-act="help">도움말… <kbd>F1</kbd><span class="meta">사용 순서와 단축키</span></button>
+        <div class="sep"></div>
         <button role="menuitem" data-act="about">정보…<span class="meta">소프트웨어 정보, 오픈소스 정보</span></button>
       </div>
     </div>
@@ -433,16 +490,16 @@ a.folder-link::before { content: "📂 "; text-decoration: none; display: inline
     <aside>
       <div class="filters">
         <div class="chips" id="chips"></div>
-        <input type="search" id="search" placeholder="식별자, 파일명, 내용 검색" aria-label="검색">
+        <input type="search" id="search" placeholder="식별자, 파일명, 내용 검색 (Ctrl+K)" aria-label="검색">
         <label class="tree-opts"><input type="checkbox" id="only-tagged"> 예외사유가 있는 파일만 보기</label>
       </div>
       <div class="tree" id="tree" role="tree" aria-label="소스 구성"></div>
       <div class="resizer" id="resizer" role="separator" aria-orientation="vertical" aria-label="왼쪽 창 너비"
         tabindex="0" title="끌어서 너비를 바꿉니다 (두 번 누르면 처음 너비)"></div>
     </aside>
-    <main id="main"></main>
+    <main id="main" tabindex="-1"></main>
     <!-- 3 보고서 만들기: 다른 단계처럼 오른쪽 화면으로 보인다 -->
-    <section id="report" class="pane" hidden aria-labelledby="report-title">
+    <section id="report" class="pane" hidden aria-labelledby="report-title" tabindex="-1">
       <div class="head"><div><h2 id="report-title" style="font-family:inherit">보고서 만들기</h2>
         <div class="meta">소스에 반영된 내용으로 양식(부록 7)대로 만듭니다.</div></div></div>
       <div id="g-notices"></div>
@@ -603,7 +660,29 @@ a.folder-link::before { content: "📂 "; text-decoration: none; display: inline
   </form>
 </dialog>
 
-<div id="toast" role="status"></div>
+<dialog id="dlg-help" class="wide">
+  <form method="dialog">
+    <div class="dlg-head"><h2>도움말</h2><button value="close" aria-label="닫기">닫기</button></div>
+    <div class="dlg-body">
+      <h3>쓰는 순서</h3>
+      <ol class="help-steps">
+        <li><b>프로젝트 열기</b> — 왼쪽 위 프로젝트 단추를 누르고 "폴더 열기…"를 고릅니다. 프로젝트 파일(CCS·Visual Studio 등)이 있으면 무엇으로 열지 고릅니다.
+          개발도구에서 소스를 고치고 이 창으로 돌아오면 바뀐 소스를 저절로 다시 읽습니다.</li>
+        <li><b>1 잘못 쓴 주석 고치기</b> — 규칙에 맞지 않는 예외사유 주석을 모아 보여 줍니다. "주석 고치기"로 원문을 고치고 "소스에 반영"을 누르면
+          다음 주석의 고치기 상자가 열립니다.</li>
+        <li><b>2 예외사유 검토·편집</b> — 왼쪽 트리에서 범위를 고르고 목록의 예외사유를 눌러 내용을 고칩니다. 고친 칸에는 파란 테두리가 생기고,
+          "소스에 반영"을 눌러야 소스 주석에 저장됩니다. "양식 미리보기" 탭에서 보고서 모양을 봅니다.</li>
+        <li><b>3 보고서 만들기</b> — 양식(부록 7)대로 md·hwpx를 만듭니다. "새 판으로 보관"을 켜면 지난 판과 비교한 변경내역이 함께 남습니다.</li>
+      </ol>
+      <h3>단축키</h3>
+      <table class="help-keys"><thead><tr><th>글쇠</th><th>하는 일</th><th>쓸 수 있을 때</th></tr></thead><tbody id="help-keys"></tbody></table>
+      <p class="help" style="color:var(--muted);font-size:12.5px;margin:12px 0 0">주석 쓰는 법은 도구 폴더의 <code>docs/예외사유_표기법.md</code>, 자세한 사용법은
+        <code>README.md</code>에 있습니다.</p>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" role="status" title="누르면 닫힙니다"></div>
 <div id="busy" hidden>
   <div class="box" role="dialog" aria-modal="true" aria-labelledby="busy-phase">
     <div class="phase" id="busy-phase">소스 읽는 중</div>
@@ -637,7 +716,7 @@ let OCC = [];            // 발생 위치(와 참조 코드) 목록: {item, n, r
 let BY_FILE = {};        // 파일 식별자 -> OCC
 let NODES = {};          // 트리 노드 id -> 노드
 
-const blockKey = (b) => [b.file, b.test, b.id, b.index, b.ordinal].join("|");
+const blockKey = (b) => [b.file, b.test, b.id, b.group, b.index, b.ordinal].join("|");
 const typeOf = (code) => S.types.find((t) => t.code === code);
 const itemOf = (key) => S.items.find((i) => i.key === key);
 const norm = (v) => v.split(/\r?\n/).map((l) => l.trim().split(/\s+/).join(" ")).filter(Boolean).join("\n");
@@ -660,7 +739,7 @@ const BUSY_LABELS = {
   "/api/browse": "폴더 읽는 중", "/api/rules": "규칙 목록 저장하는 중", "/api/rules/parse": "규칙 목록 파일 읽는 중",
   "/api/report-info": "보고서 정보 저장하는 중", "/api/projects/remove": "프로젝트 목록 고치는 중",
   "/api/about": "정보 읽는 중", "/api/state": "화면 준비 중", "/api/open-folder": "폴더 여는 중",
-  "/api/changed": "바뀐 소스 확인 중",
+  "/api/changed": "바뀐 소스 확인 중", "/api/regroup": "그룹을 옮기는 중",
 };
 const NO_BUSY = ["/api/pick-folder", "/api/progress"];
 
@@ -723,7 +802,7 @@ function showBusy(p) {
 }
 
 // 서버(server.py 의 API_LEVEL)와 같아야 하는 번호. 다르면 화면만 새것이고 서버는 예전 것이다.
-const API_LEVEL = 10;
+const API_LEVEL = 11;
 
 function staleServerNotice(level) {
   if (level === API_LEVEL || $("stale-server")) return;
@@ -900,6 +979,7 @@ async function menuAction(e) {
   else if (act === "open-list") showOpen();
   else if (act === "rules") showRules();
   else if (act === "about") showAbout();
+  else if (act === "help") showHelp();
 }
 $("btn-proj").addEventListener("click", () => toggleMenu($("btn-proj"), $("menu-proj"), buildProjectMenu));
 $("btn-settings").addEventListener("click", () => toggleMenu($("btn-settings"), $("menu-settings")));
@@ -1017,7 +1097,7 @@ function renderHistory() {
       const basis = ed ? `${esc(ed)}${v["도구 버전"] ? ` · ${esc(S.name || "SRT-ARA")} ver.${esc(v["도구 버전"])}` : ""}${other ? ' <span class="badge warn" title="지금 도구의 기준과 다릅니다">다른 기준</span>' : ""}` : "기록 없음";
       // 판 목록은 저장소 안의 파일에서 오므로 숫자 자리도 esc 를 거친다 (서버도 정수로 고른다)
       return `<tr><td>v${esc(v["판"])}</td><td>${esc(v["시각"] || "")}</td><td>${esc(v["메모"] || "")}</td><td>${basis}</td><td>${esc(v["예외사유"] ?? 0)}건${v["오류"] ? ` (오류 ${esc(v["오류"])})` : ""}</td>
-        <td>추가 ${esc(ch["추가"] ?? 0)} · 변경 ${esc(ch["변경"] ?? 0)} · 삭제 ${esc(ch["삭제"] ?? 0)}</td>
+        <td>추가 ${esc(ch["추가"] ?? 0)} · 변경 ${esc(ch["변경"] ?? 0)} · 삭제 ${esc(ch["삭제"] ?? 0)}${ch["이동"] ? ` · 그룹 이동 ${esc(ch["이동"])}` : ""}</td>
         <td><a href="${outHref(dir + "변경내역.md")}" target="_blank" rel="noopener">변경내역</a>
           · ${folderLink(dir, "폴더")}</td></tr>`;
     }).join("") + "</tbody></table>";
@@ -1101,7 +1181,7 @@ function pendingEdits(item) {
     const fields = Object.assign({}, originalFields(item, n));
     Object.entries(changes).forEach(([k, v]) => { fields[k] = v; });
     const b = occ.main;
-    edits.push({file: b.file, sha: b.sha, test: b.test, id: b.id, index: b.index, ordinal: b.ordinal, fields});
+    edits.push({file: b.file, sha: b.sha, test: b.test, id: b.id, group: b.group, index: b.index, ordinal: b.ordinal, fields});
   });
   return edits;
 }
@@ -1173,7 +1253,7 @@ function nodeHtml(node, depth) {
   const caret = node.k === "f" ? "" : (isOpen ? "▾" : "▸");
   const kind = node.k === "p" ? `<span class="kind">${esc(S.projects[node.project].label)}</span>` : "";
   const dirty = node.k === "f" && (BY_FILE[node.f] || []).some((o) => isDirty(o.item.key));
-  let html = `<div class="trow ${cls} ${node.count ? "" : "dim"}" role="treeitem" tabindex="0" data-node="${node.id}"
+  let html = `<div class="trow ${cls} ${node.count ? "" : "dim"}" role="treeitem" tabindex="-1" data-node="${node.id}"
       aria-current="${scope === node.id}" ${node.k === "f" ? "" : `aria-expanded="${isOpen}"`}
       style="padding-left:${6 + depth * 14}px" title="${esc(node.k === "f" ? node.f : node.n)}">
     <span class="caret" data-toggle="${node.id}">${caret}</span><span class="tname">${esc(node.n)}</span>${kind}
@@ -1188,21 +1268,85 @@ function renderTree() {
     $("tree").innerHTML = '<div class="empty">열기를 눌러 프로젝트 파일, makefile, 폴더, 소스 파일을 고르십시오.</div>';
     return;
   }
-  let html = `<div class="trow proj" role="treeitem" tabindex="0" data-node="" aria-current="${scope === null}"
+  let html = `<div class="trow proj" role="treeitem" tabindex="-1" data-node="" aria-current="${scope === null}"
       style="padding-left:6px"><span class="caret"></span><span class="tname">전체</span>
       ${OCC.length ? `<span class="badge">${OCC.length}</span>` : ""}</div>`;
   S.tree.forEach((p) => { html += nodeHtml(p, 0); });
+  const hadFocus = $("tree").contains(document.activeElement);
   $("tree").innerHTML = html;
+  // Tab 은 트리에 한 번만 멈춘다(마지막에 초점을 둔 줄, 없으면 지금 범위). 안에서는 화살표로 옮긴다
+  const rows = treeRows();
+  const at = rows.find((r) => r.dataset.node === treeFocus) || rows.find((r) => r.getAttribute("aria-current") === "true") || rows[0];
+  if (at) at.tabIndex = 0;
+  if (hadFocus && at) at.focus({preventScroll: true});
+}
+let treeFocus = null;          // 키보드로 마지막에 고른 트리 줄 (data-node)
+const treeRows = () => [...$("tree").querySelectorAll(".trow[data-node]")];
+function focusTreeRow(row) {
+  if (!row) return;
+  treeRows().forEach((r) => { r.tabIndex = r === row ? 0 : -1; });
+  treeFocus = row.dataset.node;
+  row.focus();
+  row.scrollIntoView({block: "nearest"});
+}
+// 트리 글쇠: ↑/↓ 옮기기, → 펼치기(펼쳐져 있으면 첫 하위로), ← 접기(접혀 있으면 상위로), Home/End 처음·끝
+function treeKey(e) {
+  const row = e.target.closest(".trow[data-node]");
+  if (!row) return false;
+  const rows = treeRows();
+  const i = rows.indexOf(row);
+  const id = row.dataset.node;
+  const node = id === "" ? null : NODES[id];
+  const branch = node && node.k !== "f";
+  if (e.key === "ArrowDown") focusTreeRow(rows[Math.min(rows.length - 1, i + 1)]);
+  else if (e.key === "ArrowUp") focusTreeRow(rows[Math.max(0, i - 1)]);
+  else if (e.key === "Home") focusTreeRow(rows[0]);
+  else if (e.key === "End") focusTreeRow(rows[rows.length - 1]);
+  else if (e.key === "ArrowRight") {
+    if (branch && !opened.has(id)) { opened.add(id); treeFocus = id; renderTree(); }
+    else if (branch || id === "") focusTreeRow(rows[i + 1]);
+  } else if (e.key === "ArrowLeft") {
+    if (branch && opened.has(id)) { opened.delete(id); treeFocus = id; renderTree(); }
+    else if (id !== "") {
+      const parent = id.includes("/") ? id.slice(0, id.lastIndexOf("/")) : "";
+      focusTreeRow(rows.find((r) => r.dataset.node === parent));
+    }
+  } else return false;
+  return true;
 }
 
 /* ---- 범위별 주석 정보 목록 ---- */
 const brief = (text) => !text ? "(내용 없음)" : text.length > 48 ? text.slice(0, 48) + "…" : text;
 
+// 목록의 줄 순서: 유형 순서, 그 안에서 ID, 그룹, 대표 먼저, 참조는 그 위치 뒤
+function orderRows(rows) {
+  const rank = Object.fromEntries(S.types.map((t, i) => [t.code, i]));
+  return rows.slice().sort((a, b) => rank[a.item.test] - rank[b.item.test]
+    || a.item.id - b.item.id || a.item.group - b.item.group || a.n - b.n
+    || (a.role === "참조") - (b.role === "참조") || a.block.tag_line - b.block.tag_line);
+}
+// 편집 화면의 이전·다음: 지금 목록(범위·유형·검색)에 보이는 예외사유 순서. 목록 밖에서 연 것이면 전체 순서
+function itemOrder() {
+  const keys = (rows) => [...new Set(orderRows(rows).map((o) => o.item.key))];
+  const shown = keys(scopeOcc().filter(matches));
+  return shown.includes(selected) ? shown : keys(OCC);
+}
+function stepItem(dir) {
+  const list = itemOrder();
+  const i = list.indexOf(selected);
+  const next = list[i + dir];
+  if (i < 0 || !next) { toast(dir > 0 ? "목록의 마지막 예외사유입니다." : "목록의 첫 예외사유입니다."); return; }
+  selected = next;
+  renderMain();
+  $("main").scrollTop = 0;
+}
+
 function renderScope() {
   const main = $("main");
   if (!S.tree.length) {
     main.innerHTML = `<div class="empty"><p>연 소스가 없습니다.</p>
-      <button class="primary" data-open="1">폴더 열기</button> <button data-open-list="1">목록에서 고르기…</button></div>`
+      <button class="primary" data-open="1">폴더 열기</button> <button data-open-list="1">목록에서 고르기…</button>
+      <p class="help" style="margin-top:14px">처음이라면 <button type="button" class="linkish" data-help="1" style="padding:0">도움말</button>(<kbd>F1</kbd>)에서 쓰는 순서를 보십시오.</p></div>`
       + (S.registry.length ? `<div class="card home"><h2>프로젝트 목록</h2>${projectListHtml()}</div>` : "");
     return;
   }
@@ -1222,7 +1366,9 @@ function renderScope() {
     ${errorNotice("먼저 고치면 목록과 보고서가 정확해집니다.")}
     <div class="stats"><div class="stat"><b>${files.size}</b>소스 파일</div>
       <div class="stat"><b>${tagged}</b>예외사유가 있는 파일</div>
-      <div class="stat"><b>${new Set(all.map((o) => o.item.key)).size}</b>예외사유(ID)</div>
+      <div class="stat"><b>${new Set(all.map((o) => o.item.rule_key)).size}</b>예외사유(ID)</div>
+      ${all.some((o) => o.item.groups.length > 1)
+        ? `<div class="stat" title="같은 ID 안에서 분석 내용에 따라 나눈 건"><b>${new Set(all.map((o) => o.item.key)).size}</b>분석 그룹</div>` : ""}
       <div class="stat"><b>${all.filter((o) => o.role !== "참조").length}</b>발생 위치</div></div>`;
   (proj ? [proj] : node ? [] : S.projects).forEach((p) => p.warnings.forEach((w) => {
     html += `<div class="note-box warning">${esc(p.name)} · ${esc(w)}</div>`;
@@ -1230,6 +1376,15 @@ function renderScope() {
   S.diagnostics.filter((d) => files.has(d.file)).slice(0, node && node.k === "f" ? 50 : 0).forEach((d) => {
     html += `<div class="note-box ${d.level === "error" ? "error" : "warning"}">${d.level === "error" ? "오류" : "경고"} · ${esc(d.line)}행 · ${esc(d.message)}</div>`;
   });
+  // 이 범위의 위치에 대한 분석 그룹 제안
+  html += suggestionsCard((S.suggestions || []).filter((s) => (filter === "ALL" || s.rule_key.startsWith(filter + ":"))
+    && s.places.some((p) => files.has(p.file))), "분석 그룹 제안");
+  // 검색·유형으로 좁혔으면 몇 곳이 남았는지와 푸는 단추를 보인다 (좁힌 것을 모른 채 "없다"고 여기지 않게)
+  if (query || filter !== "ALL") {
+    const what = [filter !== "ALL" ? typeOf(filter).title : "", query ? `검색 "${query}"` : ""].filter(Boolean).join(" · ");
+    html += `<div class="note-box info"><span>${esc(what)}: ${all.length}곳 중 ${rows.length}곳</span>
+      <button type="button" data-clear-filter="1">조건 풀기</button></div>`;
+  }
 
   if (!rows.length) {
     html += `<div class="card empty">${all.length ? "조건에 맞는 예외사유가 없습니다."
@@ -1237,15 +1392,15 @@ function renderScope() {
   } else {
     html += `<div class="card"><div class="scroll-x"><table class="rows"><thead><tr><th>식별자</th><th>구분</th><th>항목</th>
       <th>파일</th><th>줄</th><th>함수</th><th></th></tr></thead><tbody>`;
+    const ordered = orderRows(rows);
     S.types.forEach((t) => {
-      const group = rows.filter((o) => o.item.test === t.code).sort((a, b) =>      // ID, 대표 먼저, 참조는 그 위치 뒤
-        a.item.id - b.item.id || a.n - b.n || (a.role === "참조") - (b.role === "참조") || a.block.tag_line - b.block.tag_line);
+      const group = ordered.filter((o) => o.item.test === t.code);
       if (!group.length) return;
       html += `<tr class="type-head"><td colspan="7">${esc(t.title)} · ${esc(t.report)} (${group.length})</td></tr>`;
       group.forEach((o) => {
         const diags = diagnosticsOf(o.item);
         const level = diags.some((d) => d.level === "error") ? "err" : diags.length ? "warn" : "";
-        html += `<tr data-key="${esc(o.item.key)}" tabindex="0"><td class="tag">${esc(o.block.tag)}</td>
+        html += `<tr data-key="${esc(o.item.key)}" tabindex="0"><td class="tag">${esc(o.block.tag)}${tagNoteHtml(o.item, o.block)}</td>
           <td><span class="pill ${o.role === "대표" ? "rep" : ""}">${esc(o.role)}</span></td>
           <td title="${esc(o.item.fields[SUBJECT[o.item.test]] || "")}">${esc(brief(o.item.fields[SUBJECT[o.item.test]]))}</td>
           <td class="where">${esc(o.block.file)}</td><td class="where">${esc(o.block.lines)}</td>
@@ -1317,7 +1472,7 @@ function renderProblems() {
         <div class="savebar" style="position:static;margin-top:10px"><span class="hint">주석 기호(/* */, //)를 포함해 주석 전체를 고칩니다.
           주석 밖의 코드가 달라지면 반영하지 않습니다. 모두 지우고 반영하면 주석이 없어집니다.</span>
           <button data-fix-reset="${esc(g.key)}">원래대로</button>
-          <button data-fix-save="${esc(g.key)}" class="primary">소스에 반영</button></div></div>`;
+          <button data-fix-save="${esc(g.key)}" class="primary" title="반영하면 다음 주석의 고치기 상자가 열립니다 (Ctrl+S)">소스에 반영</button></div></div>`;
     }
     html += "</div>";
   });
@@ -1330,13 +1485,38 @@ async function saveFix(key) {
   const box = document.querySelector(`[data-fixtext="${CSS.escape(key)}"]`);
   if (!g || !box) return;
   fixDrafts[key] = box.value;
+  const at = problemGroups().findIndex((x) => x.key === key);
   try {
     await api("/api/fix", {file: g.file, sha: g.sha, cid: g.comment.cid, before: g.comment.raw, text: box.value});
     delete fixDrafts[key];
-    fixing = null;
+    // 다음 고칠 주석을 바로 연다: 고친 묶음이 목록에서 빠지면 그 자리에 오는 묶음(고칠 수 있는 것)
+    const next = problemGroups().slice(Math.max(0, at)).find((x) => x.comment);
+    fixing = next ? next.key : null;
     renderMain();
-    toast(`${g.file} 에 반영했습니다.`);
+    if (next) openFixBox(next.key);
+    toast(`${g.file} 에 반영했습니다.` + (next ? " 다음 주석을 열었습니다." : ""));
   } catch (err) { toast(err.message, true); }
+}
+
+// 주석 고치기 상자를 열고 그 묶음이 보이게 하고 원문 칸에 초점을 둔다
+function openFixBox(key) {
+  const card = [...document.querySelectorAll(".card.problem")].find((c) => c.dataset.group === key);
+  if (!card) return;
+  card.scrollIntoView({block: "nearest"});
+  const box = card.querySelector("textarea");
+  if (box) box.focus({preventScroll: true});
+}
+
+// 1단계의 이전·다음 고칠 주석 (Alt+↑/↓)
+function stepProblem(dir) {
+  const list = problemGroups().filter((g) => g.comment);
+  if (!list.length) return;
+  const i = list.findIndex((g) => g.key === fixing);
+  const next = list[i < 0 ? (dir > 0 ? 0 : list.length - 1) : i + dir];
+  if (!next) { toast(dir > 0 ? "마지막 주석입니다." : "첫 주석입니다."); return; }
+  fixing = next.key;
+  renderMain();
+  openFixBox(next.key);
 }
 
 /* ---- 근거자료: 그림과 다이어그램 ---- */
@@ -1521,9 +1701,14 @@ async function saveDiagram() {
   }
 }
 
-function codeBox(b, isRef) {
+// 그룹을 나눈 ID 의 식별자에 다는 괄호 풀이 (보고서와 같음: forms.explain). ID1.2(그룹)와 ID1-2(참조)를 글로 구별한다
+const tagNote = (item, b) => item && item.groups.length > 1
+  ? `그룹 ${b.group} · ${b.index === 1 ? "결함 위치" : "참조 코드"}` : "";
+const tagNoteHtml = (item, b) => tagNote(item, b) ? `<span class="tag-note">(${esc(tagNote(item, b))})</span>` : "";
+
+function codeBox(b, isRef, item) {
   const body = b.code.map(([n, t]) => `<span class="ln">${n}</span>${esc(t)}`).join("\n");
-  return `<div class="codebox"><div class="cap"><b>${isRef ? "참조 " : ""}${esc(b.tag)}</b>
+  return `<div class="codebox"><div class="cap"><b>${isRef ? "참조 " : ""}${esc(b.tag)}</b>${tagNoteHtml(item, b)}
     <span>${esc(b.file)}</span>${b.function ? `<span>${esc(b.function)}</span>` : ""}<span>Line ${esc(b.lines)}</span></div>
     <pre>${body}</pre></div>`;
 }
@@ -1562,6 +1747,69 @@ function updateNameHint(item) {
     ? `<button data-fill-name="${esc(title)}">규칙명 채우기</button> <span>${esc(title)}</span>` : "";
 }
 
+/* ---- 분석 그룹: 같은 ID(규칙) 안에서 분석 내용이 다른 건 (SRT-S-C-ID1.2) ---- */
+const SUGG_KIND = {split: "새 그룹으로 나누기", join: "다른 그룹으로 옮기기", merge: "그룹 합치기"};
+const groupTag = (item, g) => item.rule_tag + (g === 1 ? "" : "." + g);
+const siblings = (item) => S.items.filter((i) => i.rule_key === item.rule_key).sort((a, b) => a.group - b.group);
+const nextGroup = (item) => Math.max(...item.groups) + 1;
+
+// 도구가 분석 글을 보고 낸 제안 하나. "적용"을 눌러야 소스의 식별자가 바뀐다.
+function suggestionHtml(s) {
+  const i = S.suggestions.indexOf(s);
+  const item = itemOf(s.item);
+  const from = item ? item.tag : s.item;
+  const target = item ? groupTag(item, s.to) : "그룹 " + s.to;
+  return `<div class="sugg"><div class="sugg-text"><b>${esc(SUGG_KIND[s.kind] || s.kind)}</b>
+      <span class="mono">${esc(from)} → ${esc(target)}${s.new ? " (새 그룹)" : ""}</span>
+      <div class="meta">${s.places.map((p) => esc(p.file + ":" + p.lines)).join(", ")}</div>
+      <div class="help">${esc(s.reason)}</div></div>
+    <div class="sugg-act">${view === "item" && selected === s.item ? "" : `<button data-sugg-open="${esc(s.item)}">보기</button>`}
+      ${s.kind === "split" ? "" : `<button data-sugg="${i}" data-keep="1" title="옮긴 위치의 분석 글을 그대로 둡니다">글 남기고 적용</button>`}
+      <button class="primary" data-sugg="${i}" title="${s.kind === "split" ? "" : "옮긴 위치의 분석 글(옮겨 간 그룹과 겹치는 글)은 지웁니다"}">적용</button></div></div>`;
+}
+
+function suggestionsCard(list, title) {
+  if (!list.length) return "";
+  return `<div class="card"><h3>${esc(title)} ${list.length}건</h3>
+    <div class="help">같은 규칙(ID) 안에서 분석 내용이 다른 위치를 찾아 그룹을 나누거나 합치자는 제안입니다.
+      적용하면 주석의 식별자(예: SRT-S-C-ID1 → SRT-S-C-ID1.2)를 고쳐 소스에 반영합니다.
+      다른 그룹으로 옮기기·합치기의 "적용"은 옮긴 위치에 적힌 분석 글(옮겨 간 그룹과 겹치는 글)도 지웁니다.</div>
+    ${list.map(suggestionHtml).join("")}</div>`;
+}
+
+// 발생 위치들을 같은 ID 의 그룹 to 로 옮긴다 (주석의 식별자를 고친다. clear 이면 옮긴 위치의 분석 글도 지운다)
+async function regroup(ruleKey, places, to, clear) {
+  if (Object.keys(drafts).some((k) => itemOf(k) && itemOf(k).rule_key === ruleKey)) {
+    toast("반영하지 않은 편집이 있습니다. 먼저 소스에 반영하거나 편집을 취소하십시오.", true);
+    render();
+    return;
+  }
+  try {
+    const res = await api("/api/regroup", {to, clear: !!clear,
+      places: places.map((p) => ({file: p.file, sha: p.sha, blocks: p.blocks}))});
+    toast(res.saved.join(", ") + " 의 식별자를 고쳤습니다.");
+  } catch (err) {
+    render();
+    toast(err.message, true);
+  }
+}
+
+// 편집 화면 위쪽: 이 ID 의 그룹들과, 이 ID 에 대한 제안
+function groupCard(item) {
+  const sibs = siblings(item);
+  const mine = (S.suggestions || []).filter((s) => s.rule_key === item.rule_key);
+  let html = "";
+  if (sibs.length > 1) {
+    html += `<div class="card"><h3>분석 그룹 <span class="meta">${esc(item.rule_tag)} · ${sibs.length}개</span></h3>
+      <div class="groups">${sibs.map((g) => g.key === item.key
+        ? `<span class="pill rep">${esc(g.tag)} · ${g.count}곳</span>`
+        : `<button class="linkish" data-sugg-open="${esc(g.key)}">${esc(g.tag)} · ${g.count}곳</button>`).join(" ")}</div>
+      <div class="help">같은 규칙의 다른 분석을 그룹으로 나눈 것입니다. 보고서에는 그룹마다 양식 표가 하나씩 들어갑니다.
+        아래 '발생 위치'의 그룹 칸에서 위치를 다른 그룹으로 옮길 수 있습니다.</div></div>`;
+  }
+  return html + suggestionsCard(mine, "그룹 제안");
+}
+
 function renderEdit(item) {
   const type = typeOf(item.test);
   const rep = item.occurrences[0];
@@ -1576,10 +1824,20 @@ function renderEdit(item) {
   if (!rep.main.editable) {
     html += '<div class="note-box error">이 예외사유는 주석이 닫히지 않아 화면에서 편집할 수 없습니다. 소스에서 먼저 고치십시오.</div>';
   }
+  html += groupCard(item);
 
   html += '<div class="card"><h3>예외사유 내용</h3>';
   shared.forEach((f) => {
     if (f.key === "첨부") return;          // 아래 '근거자료' 묶음에서 다룬다
+    // ID 단위 항목(규칙 번호 등)을 이 그룹이 쓰지 않았으면 그 항목을 쓴 그룹에서 고친다
+    if (f.per_rule && (item.inherited || []).includes(f.key)) {
+      const home = itemOf(item.rule_key + (item.home === 1 ? "" : "." + item.home));
+      html += `<div class="field inherited"><label>${esc(f.key)}<span class="key">@${esc(f.key)}</span></label>
+        <div><div class="readonly">${esc(item.fields[f.key] || "")}</div>
+          <div class="help">ID 단위 항목 · ${home ? `<button class="linkish" data-sugg-open="${esc(home.key)}">${esc(home.tag)}</button> 에서 고칩니다`
+            : "같은 ID 의 다른 그룹에 적혀 있습니다"}</div></div></div>`;
+      return;
+    }
     const v = valueOf(item, 0, f.key);
     const cls = ["field", f.required && !norm(v) ? "missing" : "", isChanged(item, 0, f.key) ? "changed" : ""].join(" ");
     const off = rep.main.editable ? "" : "disabled";
@@ -1603,11 +1861,15 @@ function renderEdit(item) {
   html += "</div>";
   html += attachCard(item);
 
-  html += '<div class="card"><h3>코드내용</h3>' + codeBox(rep.main, false)
-    + rep.refs.map((r) => codeBox(r, true)).join("") + "</div>";
+  html += '<div class="card"><h3>코드내용</h3>' + codeBox(rep.main, false, item)
+    + rep.refs.map((r) => codeBox(r, true, item)).join("") + "</div>";
 
+  // 그룹 칸: 위치를 같은 ID 의 다른 그룹(또는 새 그룹)으로 옮긴다. 편집 중이면 먼저 반영하게 한다
+  const groupOptions = (n) => [...item.groups.map((g) => `<option value="${g}" ${g === item.group ? "selected" : ""}>${esc(groupTag(item, g))}</option>`),
+    `<option value="${nextGroup(item)}">새 그룹 (${esc(groupTag(item, nextGroup(item)))})</option>`].join("");
   html += `<div class="card"><h3>발생 위치 ${item.count}곳</h3><div class="scroll-x"><table class="occ"><thead><tr>
-    <th>구분</th><th>파일</th><th>줄</th><th>함수</th>${perOcc.map((f) => `<th>${esc(f.key)}</th>`).join("")}</tr></thead><tbody>`;
+    <th>구분</th><th>파일</th><th>줄</th><th>함수</th>${perOcc.map((f) => `<th>${esc(f.key)}</th>`).join("")}
+    <th title="같은 규칙 안에서 분석이 다르면 다른 그룹으로 옮깁니다">분석 그룹</th></tr></thead><tbody>`;
   item.occurrences.forEach((occ, n) => {
     const b = occ.main;
     html += `<tr><td><span class="pill ${n === 0 ? "rep" : ""}">${n === 0 ? "대표" : "동일사항 " + n}</span></td>
@@ -1616,13 +1878,13 @@ function renderEdit(item) {
       html += `<td class="${isChanged(item, n, f.key) ? "changed" : ""}"><input type="text" data-occ="${n}" data-field="${esc(f.key)}"
         value="${esc(valueOf(item, n, f.key))}" aria-label="${esc(f.key)}" ${b.editable ? "" : "disabled"}></td>`;
     });
-    html += "</tr>";
+    html += `<td><select data-move="${n}" aria-label="분석 그룹" ${b.editable && occ.refs.every((r) => r.editable) ? "" : "disabled"}>${groupOptions(n)}</select></td></tr>`;
   });
   html += "</tbody></table></div></div>";
 
   html += `<div class="savebar"><span class="hint">소스 파일의 예외사유 주석만 고칩니다. 저장 전에 코드가 달라지지 않았는지 검증합니다.</span>
     <button id="btn-revert" ${isDirty(item.key) ? "" : "disabled"}>편집 취소</button>
-    <button id="btn-save" class="primary" ${isDirty(item.key) ? "" : "disabled"}>소스에 반영</button></div>`;
+    <button id="btn-save" class="primary" ${isDirty(item.key) ? "" : "disabled"} title="Ctrl+S">소스에 반영</button></div>`;
   return html;
 }
 
@@ -1666,9 +1928,16 @@ function renderItem(item) {
   const type = typeOf(item.test);
   const rep = item.occurrences[0].main;
   const from = scope === null ? "전체" : NODES[scope].n;
-  main.innerHTML = `<button class="back" data-back="1">← ${esc(from)} 목록으로</button>
+  const order = itemOrder();
+  const at = order.indexOf(item.key);
+  main.innerHTML = `<button class="back" data-back="1" title="Esc">← ${esc(from)} 목록으로</button>
     <div class="head"><div><h2>${esc(item.tag)}</h2>
-      <div class="meta">${esc(type.title)} · ${esc(type.report)} · ${esc(rep.file)}:${esc(rep.lines)}</div></div></div>
+      <div class="meta">${esc(type.title)} · ${esc(type.report)} · ${esc(rep.file)}:${esc(rep.lines)}</div></div>
+      <span class="spacer"></span>
+      ${order.length > 1 && at >= 0 ? `<div class="item-nav" role="group" aria-label="이전·다음 예외사유">
+        <button type="button" data-step-item="-1" ${at === 0 ? "disabled" : ""} title="이전 예외사유 (Alt+↑)">◀ 이전</button>
+        <span>${at + 1} / ${order.length}</span>
+        <button type="button" data-step-item="1" ${at === order.length - 1 ? "disabled" : ""} title="다음 예외사유 (Alt+↓)">다음 ▶</button></div>` : ""}</div>
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" data-tab="edit" aria-selected="${tab === "edit"}">편집</button>
       <button class="tab" role="tab" data-tab="preview" aria-selected="${tab === "preview"}">양식 미리보기</button></div>
@@ -1704,6 +1973,14 @@ $("chips").addEventListener("click", (e) => {
   if (b) { filter = b.dataset.filter; view = "scope"; renderChips(); renderMain(); }
 });
 $("search").addEventListener("input", (e) => { query = e.target.value.trim(); view = "scope"; renderMain(); });
+// 검색 칸의 Esc: 글이 있으면 비운다
+$("search").addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && e.target.value) { e.preventDefault(); e.stopPropagation(); e.target.value = ""; query = ""; renderMain(); }
+});
+function clearFilters() {
+  filter = "ALL"; query = ""; $("search").value = ""; view = "scope";
+  renderChips(); renderMain();
+}
 $("only-tagged").addEventListener("change", (e) => { onlyTagged = e.target.checked; renderTree(); });
 
 // 트리: 화살표를 누르면 펼치고 접는다. 이름을 누르면 그 범위의 주석 정보를 나열한다.
@@ -1724,8 +2001,24 @@ function pickNode(e) {
   renderChips(); renderTree(); renderMain();
   $("main").scrollTop = 0;
 }
-$("tree").addEventListener("click", pickNode);
-$("tree").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickNode(e); } });
+$("tree").addEventListener("click", (e) => {
+  const row = e.target.closest(".trow[data-node]");
+  if (row) treeFocus = row.dataset.node;
+  pickNode(e);
+});
+$("tree").addEventListener("keydown", (e) => {
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    const row = e.target.closest(".trow[data-node]");
+    if (row) treeFocus = row.dataset.node;
+    pickNode(e);
+    const again = treeRows().find((r) => r.dataset.node === treeFocus);     // 다시 그린 트리에서 같은 줄에 초점
+    if (again) focusTreeRow(again);
+    return;
+  }
+  if (treeKey(e)) e.preventDefault();
+});
 
 function openItem(key) {
   selected = key; view = "item"; tab = "edit";
@@ -1763,7 +2056,7 @@ $("main").addEventListener("input", (e) => {
     const id = Object.keys(titles).find((k) => `${k}: ${titles[k]}` === el.value);
     if (id) {
       el.value = id;
-      if (!$("f-FA내용").value.trim()) fillRuleName(item, titles[id]);
+      if ($("f-FA내용") && !$("f-FA내용").value.trim()) fillRuleName(item, titles[id]);
     }
   }
   setValue(item, Number(el.dataset.occ), el.dataset.field, el.value);
@@ -1779,8 +2072,11 @@ $("main").addEventListener("input", (e) => {
 $("main").addEventListener("click", async (e) => {
   if (e.target.closest("[data-open]")) { pickFolder(); return; }
   if (e.target.closest("[data-open-list]")) { showOpen(); return; }
+  if (e.target.closest("[data-help]")) { showHelp(); return; }
   if (await projectAction(e)) return;
   if (e.target.closest("[data-back]")) { view = "scope"; renderMain(); return; }
+  if (e.target.closest("[data-step-item]")) { stepItem(Number(e.target.closest("[data-step-item]").dataset.stepItem)); return; }
+  if (e.target.closest("[data-clear-filter]")) { clearFilters(); return; }
   if (e.target.closest("[data-go]")) { goStep(e.target.closest("[data-go]").dataset.go); return; }
   const row = e.target.closest("tr[data-key]");
   if (row) { openItem(row.dataset.key); return; }
@@ -1789,9 +2085,21 @@ $("main").addEventListener("click", async (e) => {
 
   // 점검 결과 화면
   const hit = (name) => e.target.closest(`[data-${name}]`);
+  // 분석 그룹: 다른 그룹 열기, 제안 적용
+  if (hit("sugg-open")) { openItem(hit("sugg-open").dataset.suggOpen); return; }
+  if (hit("sugg")) {
+    const s = S.suggestions[Number(hit("sugg").dataset.sugg)];
+    if (s) regroup(s.rule_key, s.places, s.to, s.kind !== "split" && !hit("sugg").dataset.keep);
+    return;
+  }
   if (hit("goto-fix")) { fixing = hit("goto-fix").dataset.gotoFix; view = "problems"; renderMain(); return; }
   if (hit("item") && view === "problems") { openItem(hit("item").dataset.item); return; }
-  if (hit("fix")) { fixing = fixing === hit("fix").dataset.fix ? null : hit("fix").dataset.fix; renderMain(); return; }
+  if (hit("fix")) {
+    fixing = fixing === hit("fix").dataset.fix ? null : hit("fix").dataset.fix;
+    renderMain();
+    if (fixing) openFixBox(fixing);
+    return;
+  }
   if (hit("fix-reset")) { delete fixDrafts[hit("fix-reset").dataset.fixReset]; renderMain(); return; }
   if (hit("fix-save")) { saveFix(hit("fix-save").dataset.fixSave); return; }
   if (hit("sugg-from")) {
@@ -1847,7 +2155,25 @@ $("main").addEventListener("click", async (e) => {
   }
 });
 
+// 발생 위치 하나(와 같은 파일의 참조 코드)를 /api/regroup 에 보낼 모양으로
+const placeOf = (occ) => ({file: occ.main.file, sha: occ.main.sha,
+  blocks: [occ.main, ...occ.refs.filter((r) => r.file === occ.main.file)].map((b) => [b.test, b.id, b.group, b.index, b.ordinal])});
+
 $("main").addEventListener("change", (e) => {
+  if (e.target.dataset && e.target.dataset.move !== undefined) {      // 발생 위치를 다른 그룹으로
+    const item = itemOf(selected);
+    const to = Number(e.target.value);
+    if (!item || to === item.group) return;
+    const n = Number(e.target.dataset.move);
+    const occ = item.occurrences[n];
+    let msg = `${occ.main.file}:${occ.main.lines} 을(를) ${groupTag(item, to)} 로 옮깁니다.\n주석의 식별자만 고쳐 소스에 반영합니다.`;
+    if (n === 0 && item.occurrences.length > 1) {
+      msg += `\n\n대표 위치입니다. 남은 ${item.occurrences.length - 1}곳 중 하나가 이 그룹의 대표가 되므로, 그곳에 분석 글이 없으면 다시 적어야 합니다.`;
+    }
+    if (!confirm(msg)) { e.target.value = String(item.group); return; }
+    regroup(item.rule_key, [placeOf(occ)], to);
+    return;
+  }
   if (e.target.id !== "att-file" || !e.target.files.length) return;
   const item = view === "item" && itemOf(selected);
   if (item) addImages(item, [...e.target.files]);
@@ -2027,7 +2353,7 @@ function aboutOss(res) {
   html += `<h3 class="rsec">라이선스·고지 전문</h3><table class="ab-table"><tbody>`
     + res.documents.map((d) => `<tr><td class="mono">${esc(d.name)}${d.internal ? ' <span class="badge warn">내부용</span>' : ""}</td>
         <td>${esc(d.about)}</td><td>${d.present ? `<button type="button" data-ab-doc="${esc(d.name)}">전문 보기</button>`
-          : (d.name === "LICENSE" ? "배포 전(공개본에서 만듦)" : "파일 없음")}</td></tr>`).join("")
+          : (d.name === "LICENSE" ? "내부용 폴더에는 없음(공개본을 만들 때 넣음)" : "파일 없음")}</td></tr>`).join("")
     + `<tr><td class="mono">CHANGELOG.md</td><td>버전별 변경 이력과 따르는 매뉴얼 판</td>
         <td><button type="button" data-ab-doc="CHANGELOG.md">보기</button></td></tr></tbody></table>`;
   return html;
@@ -2271,7 +2597,7 @@ $("g-run").addEventListener("click", async () => {
     const kb = (n) => (n < 1024 ? n + " B" : (n / 1024).toFixed(1) + " KB");
     const ch = res.changes;
     const since = lastBefore
-      ? `<div>지난 판(v${esc(lastBefore["판"])}, ${esc(lastBefore["시각"] || "")}) 대비: 추가 ${esc(ch["추가"])}건, 변경 ${esc(ch["변경"])}건, 삭제 ${esc(ch["삭제"])}건</div>` : "";
+      ? `<div>지난 판(v${esc(lastBefore["판"])}, ${esc(lastBefore["시각"] || "")}) 대비: 추가 ${esc(ch["추가"])}건, 변경 ${esc(ch["변경"])}건, 삭제 ${esc(ch["삭제"])}건${ch["이동"] ? `, 그룹 이동 ${esc(ch["이동"])}곳` : ""}</div>` : "";
     $("g-result").innerHTML = (res.errors
       ? `<div class="note-box error">잘못 쓴 예외사유 주석이 ${res.errors}건 있습니다. "1 잘못 쓴 주석 고치기"에서 확인하십시오.</div>` : "")
       + (res.version ? `<div class="note-box">v${res.version["판"]}(으)로 보관했습니다: 출력 폴더의 ${folderLink("이력/" + res.version["폴더"], "이력/" + res.version["폴더"])}</div>` : "")
@@ -2291,6 +2617,94 @@ $("g-run").addEventListener("click", async () => {
   } finally {
     btn.disabled = false;
   }
+});
+
+/* ---- 도움말과 단축키 ----
+   단축키 표의 원본은 SHORTCUTS 하나다. 글쇠를 더하거나 바꾸면 여기도 고친다
+   (code 는 처리하는 곳에 있어야 할 글. 표 밖의 글에 그대로 있는지 시험이 대조한다) */
+const SHORTCUTS = [
+  {keys: "F1", what: "도움말 열기·닫기", when: "언제나(다른 창이 떠 있을 때는 빼고)", code: 'e.key === "F1"'},
+  {keys: "Ctrl+S", what: "소스에 반영(편집 중인 예외사유, 고치는 주석). 보고서 정보·규칙 목록·다이어그램 창에서는 저장",
+   when: "2단계 편집 화면, 1단계에서 주석 고치기 상자를 열었을 때, 그 창이 떠 있을 때", code: 'k === "s"'},
+  {keys: "Ctrl+K", what: "왼쪽 검색 칸으로", when: "프로젝트를 열었을 때", code: 'k === "k"'},
+  {keys: "Alt+1 · Alt+2 · Alt+3", what: "1·2·3단계 화면으로", when: "프로젝트를 열었을 때", code: 'e.code.startsWith("Digit")'},
+  {keys: "Alt+↑ / Alt+↓", what: "이전 / 다음 예외사유(1단계에서는 이전 / 다음 고칠 주석)", when: "2단계 편집 화면, 1단계",
+   code: 'e.key === "ArrowDown"'},
+  {keys: "Esc", what: "편집 화면에서 목록으로, 검색 칸 비우기, 메뉴·창 닫기", when: "초점이 입력 칸 밖에 있을 때(검색 칸 비우기는 검색 칸 안에서)", code: 'e.key === "Escape"'},
+  {keys: "↑ / ↓ · ← / → · Home / End", what: "소스 트리에서 옮기기 · 접기 / 펼치기 · 처음 / 끝(Enter로 그 범위 보기)",
+   when: "소스 트리에 초점이 있을 때(Tab 한 번에 들어감)", code: 'e.key === "Home"'},
+  {keys: "← / → (Shift를 누르면 크게)", what: "왼쪽 창 너비 줄이기 / 넓히기(Home은 처음 너비)", when: "왼쪽 창 경계에 초점이 있을 때",
+   code: 'e.key === "ArrowLeft"'},
+];
+function showHelp() {
+  $("help-keys").innerHTML = SHORTCUTS.map((s) => `<tr><td>${s.keys.split(" ").map((k) =>
+      /^[A-Za-z0-9↑↓←→+]+$/.test(k) && k !== "+" ? `<kbd>${esc(k)}</kbd>` : esc(k)).join(" ")}</td>
+    <td>${esc(s.what)}</td><td class="when">${esc(s.when)}</td></tr>`).join("");
+  if (!$("dlg-help").open) $("dlg-help").showModal();
+}
+const typing = (el) => !!el && (el.tagName === "TEXTAREA" || el.tagName === "SELECT"
+  || (el.tagName === "INPUT" && !["checkbox", "radio", "button"].includes(el.type)) || el.isContentEditable);
+
+document.addEventListener("keydown", (e) => {
+  const k = (e.key || "").toLowerCase();
+  const dialog = document.querySelector("dialog[open]");
+  const busy = !$("busy").hidden;
+  if (e.key === "F1") {
+    e.preventDefault();
+    if ($("dlg-help").open) $("dlg-help").close();
+    else if (!dialog && !busy) { closeMenus(); showHelp(); }
+    return;
+  }
+  if (busy) return;
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && k === "s") {
+    e.preventDefault();                       // 브라우저의 "페이지 저장" 창을 띄우지 않는다
+    if (dialog) {
+      const save = {"dlg-info": "i-save", "dlg-rules": "r-save", "dlg-diagram": "d-save"}[dialog.id];
+      if (save && !$(save).disabled && !$(save).hidden) $(save).click();
+      return;
+    }
+    if (view === "item" && $("btn-save")) {
+      if (!$("btn-save").disabled) $("btn-save").click(); else toast("반영할 편집이 없습니다.");
+    } else if (view === "problems" && fixing && document.querySelector(`[data-fixtext="${CSS.escape(fixing)}"]`)) {
+      saveFix(fixing);
+    } else toast("반영할 편집이 없습니다. 2단계 편집 화면이나 1단계의 주석 고치기 상자에서 씁니다.");
+    return;
+  }
+  if (dialog) return;                         // 창 안의 글쇠는 창이 맡는다 (Esc 는 브라우저가 창을 닫는다)
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && k === "k") {
+    if (!S || !S.inputs.length) return;
+    e.preventDefault();
+    closeMenus();
+    $("search").focus();
+    $("search").select();
+    return;
+  }
+  if (e.altKey && !e.ctrlKey && !e.metaKey && S && S.inputs.length) {
+    const steps = {Digit1: "problems", Digit2: "scope", Digit3: "report"};
+    if (e.code.startsWith("Digit") && steps[e.code]) { e.preventDefault(); closeMenus(); goStep(steps[e.code]); return; }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      const dir = e.key === "ArrowDown" ? 1 : -1;
+      if (view === "item") { e.preventDefault(); stepItem(dir); }
+      else if (view === "problems") { e.preventDefault(); stepProblem(dir); }
+      return;
+    }
+  }
+  if (e.key === "Escape" && !document.querySelector(".menu:not([hidden])") && !typing(e.target)
+      && view === "item" && !e.defaultPrevented) {
+    view = "scope";
+    renderMain();
+    const row = $("main").querySelector(`tr[data-key="${CSS.escape(selected || "")}"]`);
+    if (row) { row.scrollIntoView({block: "nearest"}); row.focus({preventScroll: true}); }
+  }
+});
+
+$("toast").addEventListener("click", () => { $("toast").style.display = "none"; });
+// 본문으로 건너뛰기: 지금 보이는 화면(2단계 목록·편집, 1단계, 3단계)에 초점
+$("skip-link").addEventListener("click", (e) => {
+  e.preventDefault();
+  const pane = $("report").hidden ? $("main") : $("report");
+  const first = pane.querySelector("button:not(:disabled), input:not(:disabled), textarea, select, tr[data-key], a[href]");
+  (first || pane).focus();
 });
 
 window.addEventListener("beforeunload", (e) => { if (Object.keys(drafts).length) { e.preventDefault(); e.returnValue = ""; } });

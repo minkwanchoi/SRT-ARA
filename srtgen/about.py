@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from . import NAME, NAME_FULL, NAME_KO, VERSION_LABEL, codeimg, criteria
+from . import COPYRIGHT, NAME, NAME_FULL, NAME_KO, VERSION_LABEL, codeimg, criteria
 
 ROOT = Path(__file__).resolve().parent.parent            # 도구 폴더 (THIRD_PARTY.md, LICENSE, licenses/)
 PAPER = ("최민관, 김태현 외. (2018). 무기체계 소프트웨어 신뢰성 시험에서 예외사유의 효율적 관리 방안. "
@@ -47,7 +47,7 @@ def _license(package: str, fallback: str) -> str:
 
 
 def copyright_line(root: Path = ROOT) -> str:
-    """공개본의 LICENSE 에 적힌 저작권 줄. 내부용(배포 전)에는 LICENSE 가 없다."""
+    """공개본의 LICENSE 에 적힌 저작권 줄. 내부용 폴더에는 LICENSE 가 없다(공개본을 만들 때 넣는다)."""
     try:
         text = (root / "LICENSE").read_text(encoding="utf-8")
     except OSError:
@@ -66,7 +66,7 @@ def software(paths: Dict[str, str], mermaid: bool, root: Path = ROOT) -> List[Li
         ["따르는 기준", criteria.MANUAL],
         ["바탕 논문", PAPER],
         ["저작권·라이선스", (f"{holder}. 도구 코드는 MIT 라이선스(LICENSE)" if holder else
-                       "배포 전(내부용). 공개본의 도구 코드는 MIT 라이선스이며 저작권자는 공개할 때 정한다")
+                       f"{COPYRIGHT}. 도구 코드는 MIT 라이선스(내부용 폴더라 LICENSE 파일은 공개본을 만들 때 넣는다)")
          + ". 함께 넣은 외부 소프트웨어·자료는 각자의 조건을 따른다(오픈소스 정보 탭)"],
         ["Python", f"{platform.python_version()} ({sys.executable})"],
         ["운영체제", platform.platform()],

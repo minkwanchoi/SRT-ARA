@@ -1,9 +1,10 @@
 """예외사유 표기법 정의.
 
-    /*SRT-S-C-ID##-1{Comments}*/
+    /*SRT-S-C-ID##-1{Comments}*/      /*SRT-S-C-ID##.2-1{Comments}*/
       S : StaticTest      C : CodingRule     W : WeaknessCheck
       M : SourceCodeMetric                   D : DynamicTest
       ID## : Exception_ID##
+      .g : 같은 ID(규칙) 안에서 분석 내용이 다른 건을 나눈 그룹 번호. 쓰지 않으면 그룹 1
       1~N : ExceptionIndexNumber, 1~N(START|END) : 1~N의 시작 또는 끝
 
 Comments 는 ``@항목{내용}`` 의 나열이며, 사용할 수 있는 항목은 시험 유형마다 다르다.
@@ -26,6 +27,9 @@ class FieldDef:
     per_occurrence: bool = False   # 동일사항 위치마다 따로 쓰는 항목
     help: str = ""
     choices: Tuple[str, ...] = ()  # 시험 기준에 있는 값 (화면에서 고를 수 있게 보여 준다. 다른 값도 쓸 수 있다)
+    # ID(규칙) 단위 항목: 그룹을 나눠도 ID 에 한 번만 쓰고 모든 그룹이 함께 쓴다(규칙 번호 등).
+    # 나머지(위치별 항목 밖)는 그룹마다 쓰는 분석 항목이다.
+    per_rule: bool = False
 
 
 @dataclass(frozen=True)
@@ -53,11 +57,12 @@ TEST_TYPES: Dict[str, TestType] = {
         "S-C", "정적시험-코딩규칙", "코딩규칙 점검 FA 사유서", "01_코딩규칙_FA사유서", "FA분석",
         (
             FieldDef("기준", ("코딩기준", "표준", "standard"), required=True, help="적용한 코딩 규칙 기준",
-                     choices=tuple(name for name, _langs in criteria.CODING_STANDARDS)),
+                     choices=tuple(name for name, _langs in criteria.CODING_STANDARDS), per_rule=True),
             FieldDef("규칙", ("규칙번호", "코딩규칙", "위반유형", "rule"), required=True,
-                     help="위반한 규칙의 번호 (예: Rule 14.3, ES.20)"),
+                     help="위반한 규칙의 번호 (예: Rule 14.3, ES.20)", per_rule=True),
             FieldDef("FA내용", ("규칙명", "내용", "규칙내용"), required=True,
-                     help="규칙명. 도구에 그 기준의 규칙 목록이 있으면(.NET, C# 등) 비워 두어도 번호로 찾아 채운다"),
+                     help="규칙명. 도구에 그 기준의 규칙 목록이 있으면(.NET, C# 등) 비워 두어도 번호로 찾아 채운다",
+                     per_rule=True),
             FieldDef("FA분석", ("분석", "사유"), required=True, help="거짓경보로 판단한 분석 내용"),
             FieldDef("결론", (), required=True, help="신뢰성/기능 영향에 대한 결론"),
             FieldDef("Ref", ("참조", "reference"), help="참조 문서"),
@@ -67,9 +72,10 @@ TEST_TYPES: Dict[str, TestType] = {
         "S-W", "정적시험-취약점점검", "취약점 점검 FA 사유서", "02_취약점_FA사유서", "FA분석",
         (
             FieldDef("취약점", ("위반유형", "CWE", "weakness"), required=True,
-                     help="검출된 취약점 항목 (CWE 번호와 이름)", choices=criteria.weakness_choices()),
+                     help="검출된 취약점 항목 (CWE 번호와 이름)", choices=criteria.weakness_choices(), per_rule=True),
             FieldDef("FA내용", ("취약점명", "내용", "취약점내용"),
-                     help="취약점의 이름. 비워 두면 CWE 번호로 찾아 채우고, 목록에 없는 CWE 는 @취약점에 번호 뒤로 적은 이름을 쓴다"),
+                     help="취약점의 이름. 비워 두면 CWE 번호로 찾아 채우고, 목록에 없는 CWE 는 @취약점에 번호 뒤로 적은 이름을 쓴다",
+                     per_rule=True),
             FieldDef("FA분석", ("분석", "사유"), required=True, help="거짓경보로 판단한 분석 내용"),
             FieldDef("결론", (), required=True, help="신뢰성/기능 영향에 대한 결론"),
             FieldDef("Ref", ("참조", "reference"), help="참조 문서(CWE 번호 등)"),
@@ -79,8 +85,8 @@ TEST_TYPES: Dict[str, TestType] = {
         "S-M", "정적시험-소스코드메트릭", "소스코드메트릭 제한값 미달성 분석 보고서",
         "03_소스코드메트릭_미달성분석보고서", "미달성사유",
         (
-            FieldDef("메트릭", ("metric",), required=True, help="메트릭 종류", choices=criteria.METRICS),
-            FieldDef("제한값", ("기준", "limit"), required=True, help="메트릭 제한값"),
+            FieldDef("메트릭", ("metric",), required=True, help="메트릭 종류", choices=criteria.METRICS, per_rule=True),
+            FieldDef("제한값", ("기준", "limit"), required=True, help="메트릭 제한값", per_rule=True),
             FieldDef("측정값", ("measured",), required=True, per_occurrence=True, help="도구 측정값"),
             FieldDef("미달성사유", ("사유",), required=True, help="제한값을 충족하지 못한 사유"),
         ) + _COMMON, "소스코드 메트릭 점검",
@@ -90,7 +96,7 @@ TEST_TYPES: Dict[str, TestType] = {
         "04_동적시험_미달성분석보고서", "미달성사유",
         (
             FieldDef("커버리지", ("실행률", "기준", "coverage"), required=True, help="달성하지 못한 코드 실행률 기준",
-                     choices=tuple(name for name, _accepted in criteria.COVERAGES)),
+                     choices=tuple(name for name, _accepted in criteria.COVERAGES), per_rule=True),
             FieldDef("미달성사유", ("사유",), required=True, help="코드 실행률을 달성하지 못한 사유"),
             FieldDef("요구사항", ("Ref", "참조", "requirement"), help="관련 요구사항 식별자"),
         ) + _COMMON, "동적시험",
@@ -111,15 +117,18 @@ for _t in TEST_TYPES.values():
     _FIELD_INDEX[_t.code] = _idx
 
 
+# 그룹(1): 시험 유형, (2): ID 번호, (3): 그룹 번호(없으면 1), (4): 인덱스, (5): START/END.
+# 문장 끝의 마침표(`… SRT-S-C-ID1.`)는 식별자에 넣지 않지만, 마침표 뒤에 글자가 이어지면(ID1.A) 식별자가 아니다.
 TAG_RE = re.compile(
-    r"(?<![A-Za-z0-9_-])SRT-(S-C|S-W|S-M|D)-ID(\d+)(?:-(\d+)(START|END)?)?(?![A-Za-z0-9_-])"
+    r"(?<![A-Za-z0-9_-])SRT-(S-C|S-W|S-M|D)-ID(\d+)(?:\.(\d+))?(?:-(\d+)(START|END)?)?"
+    r"(?![A-Za-z0-9_-]|\.[A-Za-z0-9])"
 )
 # 표기법처럼 보이지만 문법에 맞지 않는 것을 찾기 위한 느슨한 패턴.
 # 뒤쪽은 소문자, 밑줄, 공백으로 잘못 쓴 것(srt-s-c-id1-1, SRT_S_C_ID1_1, SRT S-C-ID1-1)을 잡는다.
 # 경로 안의 글자(`srt_attach/SRT-S-W-ID1_그림.png`)는 식별자로 보지 않는다.
 LOOSE_TAG_RE = re.compile(
-    r"(?<![A-Za-z0-9_/\\.-])SRT-[A-Za-z]-?[A-Za-z0-9-]*"
-    r"|(?i:(?<![A-Za-z0-9_/\\.-])SRT[-_ ]+[SD](?![A-Za-z])[-_A-Za-z0-9]*(?: +(?:ID|START|END)[-_A-Za-z0-9]*)*)"
+    r"(?<![A-Za-z0-9_/\\.-])SRT-[A-Za-z]-?[A-Za-z0-9.-]*"
+    r"|(?i:(?<![A-Za-z0-9_/\\.-])SRT[-_ ]+[SD](?![A-Za-z])[-_A-Za-z0-9.]*(?: +(?:ID|START|END)[-_A-Za-z0-9.]*)*)"
 )
 # 주석에 표기법(또는 잘못 쓴 표기법)이 들어 있는지 가려내는 패턴
 SUSPECT_RE = re.compile(r"SRT-|(?i:(?<![A-Za-z0-9])SRT[-_ ]+[SD](?![A-Za-z]))")
@@ -136,21 +145,57 @@ class TagHit:
     written: str = ""              # 소스에 쓴 그대로의 식별자 (START/END 제외)
     tag_span: Tuple[int, int] = (0, 0)             # 주석 내용 안에서 태그의 위치
     body_span: Optional[Tuple[int, int]] = None    # 중괄호를 포함한 본문의 위치 (닫힌 본문만)
+    group: int = 1                 # 같은 ID 안의 그룹 번호 (ID1.2 -> 2)
 
     @property
     def tag(self) -> str:
-        return self.written or format_tag(self.test, self.ex_id, self.index)
+        return self.written or format_tag(self.test, self.ex_id, self.index, self.group)
 
 
-def format_tag(test: str, ex_id: int, index: Optional[int] = None) -> str:
-    base = f"SRT-{test}-ID{ex_id}"
+MAX_GROUP = 999
+
+# 분석 글이 얼마나 비슷한가 (표준 라이브러리 difflib 의 글자 단위 유사도, 0~1). 그룹 제안(grouping)과 점검이 쓴다.
+# 값은 공개 소스 5개(FreeRTOS·lwIP·ETL·commons-lang·nanoFramework)에 규칙 6개·분석 13갈래를 심어 잰 것이다(64단계).
+# 같은 뜻을 크게 바꿔 쓴 글은 글자 유사도로 알아볼 수 없어(0.15~0.47) 나누자는 제안이 남을 수 있다. 제안은 사용자가
+# 받아들여야 반영되므로, 다른 분석을 묻어 버리는 것(못 나눔)보다 나누자고 더 묻는 쪽을 택했다.
+KEEP = 0.5        # 대표의 분석과 이 이상 비슷하면 같은 분석으로 보고 나누자고 하지 않는다 (0.4 밑은 못 나눔이 급히 늘었다)
+SIMILAR = 0.5     # 대표와 다른 분석끼리 이 이상 비슷하면 한 그룹에 묶거나 그 그룹으로 옮기자고 한다
+SAME = 0.9        # 이 이상이면 거의 같은 글(띄어쓰기·조사 차이: 0.95~0.99)로 본다: 그 위치의 글을 지우라고 알리고, 두 그룹은 합치자고 한다
+
+
+def analysis_keys(ttype: "TestType") -> Tuple[str, ...]:
+    """분석 글 항목: 그 유형의 사유 항목(@FA분석·@미달성사유)과 @결론(있으면).
+    그룹 제안이 견주고, 참조 코드 혼동 경고가 보고, 합치기에서 지우는 글이다."""
+    return tuple(k for k in (ttype.default_field, "결론") if ttype.field(k) is not None)
+
+
+def similarity(a: str, b: str) -> float:
+    a, b = " ".join(a.split()), " ".join(b.split())
+    if not a or not b:
+        return 0.0
+    return difflib.SequenceMatcher(None, a, b, autojunk=False).ratio()
+
+
+def format_tag(test: str, ex_id: int, index: Optional[int] = None, group: int = 1) -> str:
+    base = f"SRT-{test}-ID{ex_id}" + (f".{group}" if group != 1 else "")
     return base if index is None else f"{base}-{index}"
 
 
 def id_part(tag: str) -> str:
-    """'SRT-S-C-ID01-2' -> 'SRT-S-C-ID01' (인덱스를 뺀 예외사유 식별자)."""
+    """'SRT-S-C-ID01.2-2' -> 'SRT-S-C-ID01.2' (인덱스를 뺀 예외사유(그룹) 식별자)."""
+    m = re.match(r"SRT-(?:S-C|S-W|S-M|D)-ID\d+(?:\.\d+)?", tag)
+    return m.group(0) if m else tag
+
+
+def rule_part(tag: str) -> str:
+    """'SRT-S-C-ID01.2-2' -> 'SRT-S-C-ID01' (그룹 번호까지 뺀 ID(규칙) 식별자)."""
     m = re.match(r"SRT-(?:S-C|S-W|S-M|D)-ID\d+", tag)
     return m.group(0) if m else tag
+
+
+def with_group(written: str, group: int) -> str:
+    """소스에 쓴 식별자의 그룹 번호만 바꾼다. ID 번호는 쓴 그대로 둔다 (ID01 -> ID01.2, ID01.2 -> ID01)."""
+    return re.sub(r"(ID\d+)(?:\.\d+)?", lambda m: m.group(1) + (f".{group}" if group != 1 else ""), written, count=1)
 
 
 def _match_brace(text: str, start: int) -> int:
@@ -219,9 +264,13 @@ def find_tags(comment: str) -> List[TagHit]:
                 body = comment[j + 1:close]
                 end = close + 1
                 body_span = (j, end)
-        written = m.group(0)[:-len(m.group(4))] if m.group(4) else m.group(0)
-        hits.append(TagHit(m.group(1), int(m.group(2)), int(m.group(3) or 1), m.group(4), body, errors,
-                           written, m.span(), body_span))
+        written = m.group(0)[:-len(m.group(5))] if m.group(5) else m.group(0)
+        group = int(m.group(3) or 1)
+        if not 1 <= group <= MAX_GROUP:
+            errors.append(f"그룹 번호는 1~{MAX_GROUP} 으로 씁니다")
+            group = max(1, min(group, MAX_GROUP))
+        hits.append(TagHit(m.group(1), int(m.group(2)), int(m.group(4) or 1), m.group(5), body, errors,
+                           written, m.span(), body_span, group))
         pos = end
     return hits
 
@@ -234,7 +283,7 @@ def loose_tags(comment: str) -> List[str]:
     bad = []
     for m in LOOSE_TAG_RE.finditer(comment):
         if not any(a <= m.start() < b for a, b in valid):
-            bad.append(m.group(0).rstrip(" -_"))
+            bad.append(m.group(0).rstrip(" -_."))
     return bad
 
 
@@ -245,10 +294,11 @@ def suggest_tag(bad: str) -> Optional[str]:
     s = re.sub(r"^SRT-?S-?([CWM])(?=-|I|1|L|\d)", r"SRT-S-\1", s)       # SRT-SC-… -> SRT-S-C-…
     s = re.sub(r"^SRT-?D(?=-|I|1D|LD|\d)", "SRT-D", s)
     s = re.sub(r"^(SRT-(?:S-[CWM]|D))-?(?:ID|1D|LD|I)-?(\d+)", r"\1-ID\2", s)   # 1D1, ID-1 -> ID1
-    m = re.match(r"^(SRT-(?:S-[CWM]|D)-ID\d+-\d+)-?([A-Z]+)$", s)
+    m = re.match(r"^(SRT-(?:S-[CWM]|D)-ID\d+(?:\.\d+)?-\d+)-?([A-Z]+)$", s)
     if m:                                                             # STRAT -> START
         close = difflib.get_close_matches(m.group(2), ["START", "END"], n=1, cutoff=0.5)
         s = m.group(1) + (close[0] if close else m.group(2))
+    s = re.sub(r"^(SRT-(?:S-[CWM]|D)-ID\d+)-(\d+)-(\d+(?:START|END)?)$", r"\1.\2-\3", s)   # ID1-2-1 -> ID1.2-1
     return s if s != bad and TAG_RE.fullmatch(s) else None
 
 

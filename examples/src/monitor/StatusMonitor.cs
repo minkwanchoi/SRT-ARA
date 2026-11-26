@@ -31,6 +31,25 @@ namespace Monitor
             }*/
         }
 
+        // 같은 취약점(CWE-476)이지만 분석이 달라(메서드 반환값을 추적하지 못한 오검출) 같은 ID 의 그룹 2로 쓴다.
+        public int NameLength(int deviceId)
+        {
+            string name = Describe(deviceId);   /*SRT-S-W-ID2.2-1START*/
+            return name.Length;                 /*SRT-S-W-ID2.2-1END{
+                @설명{Describe() 의 반환값을 null 검사 없이 쓰는 부분에서 NULL 역참조가 검출됨.}
+                @FA분석{Describe() 는 등록되지 않은 장비에도 "UNKNOWN" 을 돌려주며 null 을 돌려주는
+                        경로가 없음. 도구가 메서드의 반환값을 추적하지 못한 오검출임.}
+                @결론{Describe() 의 모든 반환 경로를 unit test 에서 확인하였음. SW신뢰성 및 기능에
+                      문제가 없음.}
+                @Ref{CWE-476 NULL Pointer Dereference}
+            }*/
+        }
+
+        public bool IsUnknown(int deviceId)
+        {
+            return Describe(deviceId).Equals("UNKNOWN");   // SRT-S-W-ID2.2-1{@비고{상태 화면 표시}}
+        }
+
         public bool Register(int deviceId, string name)
         {
             // SRT-D-ID1-1{@비고{장비 이름 NULL 방어 코드}}

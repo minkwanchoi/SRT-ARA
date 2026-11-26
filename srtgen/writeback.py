@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Tuple
 
 from . import imageinfo
 from .lexer import Language, Lexed
-from .notation import TEST_TYPES, TestType
+from .notation import MAX_GROUP, TEST_TYPES, TestType, analysis_keys, format_tag, with_group
 from .scanner import Block, TagSite, comment_spans, decode_source, scan_text
 
 WIDTH = 100       # 주석 한 줄의 목표 폭(표시 칸 수)
@@ -43,10 +43,11 @@ class FieldEdit:
     index: int
     ordinal: int
     fields: Dict[str, str]
+    group: int = 1
 
     @property
-    def key(self) -> Tuple[str, int, int, int]:
-        return (self.test, self.ex_id, self.index, self.ordinal)
+    def key(self) -> Tuple[str, int, int, int, int]:
+        return (self.test, self.ex_id, self.group, self.index, self.ordinal)
 
 
 def display_width(text: str) -> int:
@@ -206,7 +207,7 @@ def rewrite(text: str, rel: str, lang: Language, edit: FieldEdit) -> str:
     blocks, _ = scan_text(text, rel, lang)
     block = next((b for b in blocks if b.key == edit.key), None)
     if block is None:
-        raise Conflict(f"{rel}: SRT-{edit.test}-ID{edit.ex_id}-{edit.index} 을(를) 찾을 수 없습니다. "
+        raise Conflict(f"{rel}: {format_tag(edit.test, edit.ex_id, edit.index, edit.group)} 을(를) 찾을 수 없습니다. "
                        "소스를 다시 읽으십시오.")
     if not block.editable:
         raise WritebackError(f"{rel}:{block.tag_line}: {block.tag} 의 주석이 닫히지 않아 편집할 수 없습니다. "
@@ -317,6 +318,70 @@ def replace_comment(path: Path, rel: str, lang: Language, cid: int, before: str,
         raise WritebackError(f"{rel}: 주석 밖의 코드가 달라집니다. 주석 기호(/* */, //)가 제자리에 있는지, "
                              "주석이 아닌 글자가 들어가지 않았는지 확인하십시오.")
     return _store(path, rel, data, original, encoding, old, new)
+
+
+def _positions(blocks: List[Block]) -> Dict[tuple, tuple]:
+    """블록을 소스의 자리로 찾는 표. 그룹을 옮기면 순번(ordinal)이 바뀌므로 key 대신 자리를 쓴다."""
+    return {(b.tag_line, b.start_line, b.test, b.ex_id, b.index):
+            (b.group, tuple(sorted(b.fields.items())), tuple(t for _, t in b.code)) for b in blocks}
+
+
+def regroup(text: str, rel: str, lang: Language, keys: List[tuple], to: int, clear: bool = False) -> str:
+    """\\n 기준 원문에서 블록들(Block.key 목록)의 식별자를 그룹 to 로 바꾼 새 원문을 돌려준다.
+
+    주석의 식별자(SRT-S-C-ID1-1 -> SRT-S-C-ID1.2-1)만 고치고 ID 번호는 쓴 그대로 둔다.
+    저장 전 확인은 내용 편집과 같다: 코드가 그대로인가, 옮긴 블록이 그 그룹으로 읽히고 내용이 같은가,
+    다른 예외사유가 그대로인가.
+    clear 이면 옮긴 블록에 적힌 분석 글(analysis_keys)을 지운다: 합치기·다른 그룹으로 옮기기에서 옮겨 간 그룹의
+    분석과 겹치는 글이 남지 않게. 지우기는 내용 편집(rewrite)으로 하므로 같은 확인을 거친다."""
+    if not 1 <= to <= MAX_GROUP:
+        raise WritebackError(f"그룹 번호는 1~{MAX_GROUP} 입니다.")
+    wanted = {tuple(k) for k in keys}
+    blocks, _ = scan_text(text, rel, lang)
+    targets = [b for b in blocks if b.key in wanted]
+    if len(targets) != len(wanted):
+        raise Conflict(f"{rel}: 옮길 예외사유 주석을 찾을 수 없습니다. 소스를 다시 읽으십시오.")
+    changes: List[Tuple[int, int, str]] = []
+    for b in targets:
+        if not b.editable or any(s.tag_start < 0 for s in b.sites):
+            raise WritebackError(f"{rel}:{b.tag_line}: {b.tag} 의 주석이 닫히지 않아 옮길 수 없습니다. "
+                                 "소스에서 먼저 고치십시오.")
+        for s in b.sites:
+            changes.append((s.tag_start, s.tag_end, with_group(text[s.tag_start:s.tag_end], to)))
+    new = text
+    for start, end, tag in sorted(changes, reverse=True):
+        new = new[:start] + tag + new[end:]
+    if new == text:
+        return text
+    if _code_only(new, lang) != _code_only(text, lang):
+        raise WritebackError(f"{rel}: 그룹을 옮길 때 코드가 달라져 중단했습니다.")
+    expected = _positions(blocks)
+    for b in targets:
+        p = (b.tag_line, b.start_line, b.test, b.ex_id, b.index)
+        expected[p] = (to,) + expected[p][1:]
+    moved_blocks = scan_text(new, rel, lang)[0]
+    if _positions(moved_blocks) != expected:
+        raise WritebackError(f"{rel}: 그룹을 옮긴 결과가 예상과 달라 중단했습니다.")
+    if clear:
+        spots = {(b.tag_line, b.start_line, b.test, b.ex_id, b.index) for b in targets}
+        edits = []
+        for b in moved_blocks:
+            if (b.tag_line, b.start_line, b.test, b.ex_id, b.index) not in spots:
+                continue
+            drop = analysis_keys(TEST_TYPES[b.test])
+            keep = {k: v for k, v in b.fields.items() if k not in drop}
+            if keep != b.fields:        # key 는 줄 번호와 무관하므로 앞의 지우기로 줄이 줄어도 그대로 찾는다
+                edits.append(FieldEdit(b.test, b.ex_id, b.index, b.ordinal, keep, b.group))
+        for edit in edits:
+            new = rewrite(new, rel, lang, edit)
+    return new
+
+
+def move_group(path: Path, rel: str, lang: Language, keys: List[tuple], to: int,
+               expected_sha: Optional[str] = None, clear: bool = False) -> str:
+    """파일 하나에서 블록들의 그룹을 옮기고 새 내용의 해시를 돌려준다. 실패하면 파일은 그대로이다."""
+    data, original, encoding, old = _load(path, rel, expected_sha)
+    return _store(path, rel, data, original, encoding, old, regroup(old, rel, lang, keys, to, clear))
 
 
 ATTACH_DIR = "srt_attach"

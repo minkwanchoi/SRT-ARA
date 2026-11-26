@@ -207,9 +207,12 @@ class Lexed:
 
 _STRUCT_TOKEN = re.compile(r"[{}();]")
 _NOT_A_FUNCTION = {
-    "if", "for", "while", "switch", "catch", "foreach", "lock", "using", "fixed", "synchronized",
-    "return", "sizeof", "else", "do", "try", "when", "defined", "alignas", "decltype", "typeof",
+    "if", "for", "while", "switch", "catch",
+    "return", "sizeof", "else", "do", "try", "defined", "alignas", "decltype", "typeof",
 }
+# C#·Java 에서만 문장을 여는 낱말(`lock (x) {`, `using (…) {`, `synchronized (this) {`). 문장이면 앞에 아무것도 없고,
+# 앞에 반환형이 있으면 그 이름의 메서드 정의다(C++ mutex 의 `void lock() {`, 64단계에서 ETL 로 찾음)
+_STATEMENT_WORDS = {"foreach", "lock", "using", "fixed", "synchronized", "when"}
 # 선언부가 이 낱말로 시작하면 함수가 아니다 (매크로로 감싼 조건문 등: `if likely(x) {`)
 _NOT_LEADING = {"if", "else", "for", "while", "switch", "case", "return", "goto", "catch", "foreach", "throw"}
 _FIRST_WORD = re.compile(r"\s*([A-Za-z_]\w*)")
@@ -260,6 +263,8 @@ def _signature(masked: str, source: str) -> Optional[str]:
         return None
     word = name.group(0).strip()
     if word in _NOT_A_FUNCTION:
+        return None
+    if word in _STATEMENT_WORDS and not prefix[:name.start()].strip():
         return None
     if not word.startswith("operator"):
         if "=" in prefix or _REJECT_PREFIX.search(prefix):

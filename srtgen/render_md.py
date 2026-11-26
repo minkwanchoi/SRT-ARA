@@ -90,7 +90,9 @@ def render(report: Report, out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     parts = ["# " + " ".join(report.title), ""]
     for section in report.sections:
-        parts += ["## " + section.heading, "", _table(section.table, out_dir), ""]
+        parts += ["#" * section.level + " " + section.heading, ""]
+        if section.table is not None:
+            parts += [_table(section.table, out_dir), ""]
     for note in report.notes:
         parts += [note, ""]
     path = out_dir / (report.filename + ".md")

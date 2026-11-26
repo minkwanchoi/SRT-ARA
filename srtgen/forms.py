@@ -52,7 +52,8 @@ class FormTable:
 @dataclass
 class Section:
     heading: str
-    table: FormTable
+    table: Optional[FormTable]    # None 이면 제목만 (그룹을 나눈 ID 의 머리)
+    level: int = 2                # 2: 예외사유(ID), 3: ID 안의 그룹
 
 
 @dataclass
@@ -123,14 +124,25 @@ def value(text: str, span: int = 1, kind: str = "value") -> Cell:
     return Cell([Para(t) for t in (text.split("\n") if text else [""])], span, kind)
 
 
-def location(block: Block) -> str:
+def explain(block: Block, grouped: bool) -> str:
+    """그룹을 나눈 ID 의 식별자에 괄호로 다는 풀이 ("그룹 2 · 결함 위치").
+    `ID1.2`(그룹)와 `ID1-2`(참조 인덱스)가 한 글자 차이라 뜻을 글로 밝힌다. 그룹이 없으면 달지 않는다."""
+    if not grouped:
+        return ""
+    return f"그룹 {block.group} · " + ("결함 위치" if block.index == 1 else "참조 코드")
+
+
+def location(block: Block, grouped: bool = False) -> str:
     """코드위치: 라인이 바뀌어도 찾을 수 있도록 주석 식별자를 함께 적는다."""
-    return f"{block.lines}\n또는\n/* {block.tag} */"
+    return f"{block.lines}\n또는\n/* {block.tag} */" + (f"\n(그룹 {block.group})" if grouped else "")
 
 
 # 양식의 열 너비(mm). 행마다 칸 경계가 달라 잘게 나눈 뒤 병합해서 쓴다.
 _LOCATION_GRID = [16, 12, 16, 12, 18, 20, 24, 12, 40]   # FA 사유서, 동적시험 보고서
 _METRIC_GRID = [16, 12, 16, 28, 16, 18, 44, 20]         # 소스코드메트릭 보고서
+
+# 그룹을 나눈 ID 의 제목에 함께 적는 ID 단위 항목 (무슨 규칙인지)
+_RULE_SUBJECT = {"S-C": "규칙", "S-W": "취약점", "S-M": "메트릭", "D": "커버리지"}
 
 
 class Builder:
@@ -140,8 +152,9 @@ class Builder:
         self._attached: Dict[str, Path] = {}
 
     # ---- 코드내용 ----
-    def code_box(self, block: Block, ref: bool = False) -> CodeBox:
-        parts = [("참조 " if ref else "") + block.tag, block.file]
+    def code_box(self, block: Block, ref: bool = False, grouped: bool = False) -> CodeBox:
+        note = explain(block, grouped)
+        parts = [("참조 " if ref else "") + block.tag + (f" ({note})" if note else ""), block.file]
         if block.function:
             parts.append(block.function)
         parts.append(f"Line {block.lines}")
@@ -195,8 +208,9 @@ class Builder:
 
     def code_cell(self, item: ExceptionItem, span: int) -> Cell:
         rep = item.representative
-        content: List[Content] = [self.code_box(rep.main)]
-        content += [self.code_box(r, ref=True) for r in rep.refs]
+        grouped = len(item.groups) > 1
+        content: List[Content] = [self.code_box(rep.main, grouped=grouped)]
+        content += [self.code_box(r, ref=True, grouped=grouped) for r in rep.refs]
         fields = item.fields
         for text in fields.get("설명", "").split("\n"):
             if text:
@@ -223,7 +237,7 @@ class Builder:
         rows = [
             [label(subject), value(what, 3, "center"), label("FA내용"), value(content, 4)],
             [label("개수"), value(str(item.count), 1, "center"), label("파일명"), value(rep.file, 3, "center"),
-             label("코드위치\n(라인 또는\n주석정보)"), value(location(rep), 2)],
+             label("코드위치\n(라인 또는\n주석정보)"), value(location(rep, len(item.groups) > 1), 2)],
             [self.code_cell(item, 9)],
             [label("FA분석"), value(f.get("FA분석", ""), 8)],
             [label("결론"), value(f.get("결론", ""), 8)],
@@ -235,10 +249,12 @@ class Builder:
     def same_locations(item: ExceptionItem) -> List[List[Cell]]:
         """동일사항 표 (번호, 파일명, 코드위치, 비고)."""
         rows = [[label("번호"), label("파일명", 4), label("코드위치", 3), label("비고")]]
+        grouped = len(item.groups) > 1
         for n, occ in enumerate(item.same, 1):
             b = occ.main
             rows.append([value(str(n), 1, "center"), value(b.file, 4, "center"),
-                         value(f"{b.lines} (/* {b.tag} */)", 3, "center"), value(occ.fields.get("비고", ""))])
+                         value(f"{b.lines} (/* {b.tag} */)" + (f"\n(그룹 {b.group})" if grouped else ""), 3, "center"),
+                         value(occ.fields.get("비고", ""), 1, "left")])     # 좁은 칸이라 양쪽 정렬하면 벌어진다
         if not item.same:
             rows.append([value("-", 1, "center"), value("", 4), value("", 3), value("")])
         return rows
@@ -279,7 +295,7 @@ class Builder:
             reason.content.append(Para(f"[{f['요구사항']}]", "center"))
         rows = [
             [label("개수"), value(str(item.count), 1, "center"), label("파일명"), value(rep.file, 3, "center"),
-             label("코드위치\n(라인 또는\n주석정보)"), value(location(rep), 2)],
+             label("코드위치\n(라인 또는\n주석정보)"), value(location(rep, len(item.groups) > 1), 2)],
             [self.code_cell(item, 9)],
             [label("미달성\n사유"), reason],
             [label("미달성 동일사항 파일명 및 코드위치", 9)],
@@ -290,9 +306,22 @@ class Builder:
         ttype = TEST_TYPES[test]
         form = {"S-C": self.fa_form, "S-W": self.fa_form, "S-M": self.metric_form, "D": self.dynamic_form}[test]
         sections = []
-        for n, item in enumerate(items, 1):
-            heading = f"{n}. SW신뢰성시험-{ttype.name}-ID{item.ex_id} ({item.tag})"
-            sections.append(Section(heading, form(item)))
+        by_rule: Dict[int, List[ExceptionItem]] = {}
+        for item in items:
+            by_rule.setdefault(item.ex_id, []).append(item)
+        for n, (ex_id, members) in enumerate(by_rule.items(), 1):
+            if len(members) == 1:       # 그룹을 나누지 않은 ID 는 지금까지와 같다
+                item = members[0]
+                sections.append(Section(f"{n}. SW신뢰성시험-{ttype.name}-ID{ex_id} ({item.tag})", form(item)))
+                continue
+            # 같은 규칙(ID) 안에서 분석이 다른 그룹: 규칙 제목 아래 그룹마다 양식 표 하나 (1-1, 1-2 …).
+            # 규칙 제목에는 식별자(SRT-S-C-ID1)를 적지 않는다: 그룹 1의 식별자와 글자가 같아 둘을 헷갈린다
+            subject = members[0].fields.get(_RULE_SUBJECT[test], "")
+            subject = (criteria.coverage(subject) or subject) if test == "D" else subject
+            parts = [f"{n}. SW신뢰성시험-{ttype.name}-ID{ex_id}"] + ([subject.replace("\n", " ")] if subject else [])
+            sections.append(Section(" · ".join(parts + [f"분석 그룹 {len(members)}개"]), None))
+            for k, item in enumerate(members, 1):
+                sections.append(Section(f"{n}-{k}. {item.tag} (분석 그룹 {item.group})", form(item), 3))
         notes = []
         if test != "S-M":
             notes.append("※ 코드위치의 라인은 보고서 생성 시점 기준이며, 소스코드가 변경되어도 "

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
 from . import NAME
+from .notation import TAG_RE
 
 HISTORY_DIR = "이력"
 INDEX_FILE = "이력.json"
@@ -29,7 +30,7 @@ class HistoryError(Exception):
 
 _TEXT_KEYS = ("시각", "메모", "제목", "매뉴얼 판", "도구 버전")
 _COUNT_KEYS = ("예외사유", "발생 위치", "오류")
-_CHANGE_KEYS = ("추가", "변경", "삭제")
+_CHANGE_KEYS = ("추가", "변경", "삭제", "이동")      # 이동: 분석 그룹 사이로 옮긴 위치 (예전 판에는 없어 0)
 
 
 def _count(value: object) -> int:
@@ -87,7 +88,9 @@ def last_data(out: Path) -> Optional[dict]:
 
 
 def _key(e: dict) -> str:
-    return f"{e.get('test')}:{e.get('id')}"
+    """(시험 유형, ID, 그룹). 그룹 1 과 그룹을 두기 전에 보관한 판(group 없음)은 같은 열쇠다."""
+    group = e.get("group", 1)
+    return f"{e.get('test')}:{e.get('id')}" + (f".{group}" if group not in (1, None) else "")
 
 
 def _occurrences(e: dict) -> List[dict]:
@@ -108,37 +111,89 @@ def _code(e: dict) -> List[tuple]:
                   for o in e.get("occurrences", []))
 
 
+def _spot(o: dict) -> tuple:
+    """발생 위치를 판 사이에서 알아보는 열쇠: 파일, 함수, 코드 글(줄 번호는 넣지 않는다)."""
+    return (o.get("file", ""), o.get("function", ""), tuple(c.get("text", "") for c in o.get("code", [])))
+
+
+def _rule(key: str) -> str:
+    """"S-C:1.2" -> "S-C:1" (같은 ID 의 그룹끼리만 이동으로 본다)."""
+    return key.split(".")[0]
+
+
+def _moves(before: Dict[str, dict], after: Dict[str, dict]) -> List[tuple]:
+    """같은 ID 안에서 다른 그룹으로 옮겨 간 발생 위치: (위치 열쇠, 옛 그룹 key, 새 그룹 key)."""
+    where: Dict[tuple, str] = {}
+    for k, e in before.items():
+        for o in _occurrences(e):
+            where.setdefault((_rule(k), _spot(o)), k)
+    moves = []
+    for k, e in after.items():
+        for o in _occurrences(e):
+            old_key = where.get((_rule(k), _spot(o)))
+            if old_key and old_key != k and old_key in before:
+                moves.append((_spot(o), old_key, k))
+    return moves
+
+
 def compare(old: Optional[dict], new: dict) -> Dict[str, list]:
-    """두 exceptions.json 의 차이: 추가, 삭제, 변경(무엇이 바뀌었는지). old 가 없으면 모두 추가."""
+    """두 exceptions.json 의 차이: 추가, 삭제, 변경(무엇이 바뀌었는지), 그룹 이동. old 가 없으면 모두 추가.
+
+    같은 ID 안에서 위치가 다른 그룹으로 옮겨 가면(분석 그룹 나누기·옮기기·합치기) "이동"으로 묶어 적고,
+    그 때문에 생긴 개수·발생 위치 차이와, 옮겨 온 위치만으로 된 새 그룹(추가)·모두 옮겨 간 그룹(삭제)은 따로 적지 않는다."""
     before = {_key(e): e for e in (old or {}).get("exceptions", [])}
     after = {_key(e): e for e in new.get("exceptions", [])}
-    added = [after[k] for k in after if k not in before]
-    removed = [before[k] for k in before if k not in after]
+    moves = _moves(before, after)
+    moved_out = {(k, s) for s, k, _n in moves}
+    moved_in = {(k, s) for s, _o, k in moves}
+
+    def all_moved(e: dict, k: str, moved: set) -> bool:
+        occ = _occurrences(e)
+        return bool(occ) and all((k, _spot(o)) in moved for o in occ)
+
+    added = [after[k] for k in after if k not in before and not all_moved(after[k], k, moved_in)]
+    removed = [before[k] for k in before if k not in after and not all_moved(before[k], k, moved_out)]
     changed = []
     for k in after:
         if k not in before:
             continue
         a, b = before[k], after[k]
+        # 옮겨 간·옮겨 온 위치는 빼고 견준다 (이동은 아래 "이동"으로 적는다)
+        occ_a = [o for o in _occurrences(a) if (k, _spot(o)) not in moved_out]
+        occ_b = [o for o in _occurrences(b) if (k, _spot(o)) not in moved_in]
         what = []
         fields = _changed_fields(a.get("fields", {}), b.get("fields", {}))
-        if _places(a) == _places(b):            # 위치별 항목(비고, 측정값 등)도 본다
-            for oa, ob in zip(_occurrences(a), _occurrences(b)):
+        places_a = [(o.get("file", ""), o.get("function", "")) for o in occ_a]
+        places_b = [(o.get("file", ""), o.get("function", "")) for o in occ_b]
+        if places_a == places_b:                # 위치별 항목(비고, 측정값 등)도 본다
+            for oa, ob in zip(occ_a, occ_b):
                 fields |= _changed_fields(oa.get("fields", {}), ob.get("fields", {}))
         if fields:
             what.append("내용(" + ", ".join(sorted(fields)) + ")")
-        if a.get("count") != b.get("count"):
-            what.append(f"개수 {a.get('count')}→{b.get('count')}")
-        elif _places(a) != _places(b):
+        count_a = len(occ_a) if len(occ_a) != len(_occurrences(a)) else a.get("count")
+        count_b = len(occ_b) if len(occ_b) != len(_occurrences(b)) else b.get("count")
+        if count_a != count_b:
+            what.append(f"개수 {count_a}→{count_b}")
+        elif places_a != places_b:
             what.append("발생 위치")
-        if _code(a) != _code(b):
+        if sorted(_spot(o)[::2] for o in occ_a) != sorted(_spot(o)[::2] for o in occ_b):
             what.append("코드")
         if what:
             changed.append({"tag": b.get("tag", k), "test_name": b.get("test_name", ""), "what": what})
-    return {"added": added, "removed": removed, "changed": changed}
+    moved = [{"from": before[o].get("tag", o), "to": after[n].get("tag", n),
+              "test_name": after[n].get("test_name", ""), "file": s[0], "function": s[1],
+              "new": n not in before, "gone": o not in after} for s, o, n in moves]
+    # 그룹을 나눈 ID (옛 판이나 새 판에서 그룹이 둘 이상): 변경내역이 식별자에 그룹을 괄호로 밝힌다
+    rules: Dict[str, set] = {}
+    for k in list(before) + list(after):
+        rules.setdefault(_rule(k), set()).add(k)
+    grouped = sorted(r for r, ks in rules.items() if len(ks) > 1)
+    return {"added": added, "removed": removed, "changed": changed, "moved": moved, "grouped": grouped}
 
 
 def counts(diff: Dict[str, list]) -> Dict[str, int]:
-    return {"추가": len(diff["added"]), "변경": len(diff["changed"]), "삭제": len(diff["removed"])}
+    return {"추가": len(diff["added"]), "변경": len(diff["changed"]), "삭제": len(diff["removed"]),
+            "이동": len(diff.get("moved", []))}
 
 
 def basis_of(data: Optional[dict]) -> Dict[str, str]:
@@ -148,11 +203,25 @@ def basis_of(data: Optional[dict]) -> Dict[str, str]:
         {"매뉴얼": "", "매뉴얼 판": "", "도구 버전": ""}
 
 
+def _group_namer(diff: Dict[str, list]):
+    """변경내역의 식별자에 그룹을 괄호로 밝힌다(61단계). 옛 판이나 새 판에서 그룹을 나눈 ID 만."""
+    grouped = set(diff.get("grouped", []))
+
+    def named(tag: str) -> str:
+        m = TAG_RE.match(tag)
+        if not m or f"{m.group(1)}:{int(m.group(2))}" not in grouped:
+            return tag
+        return f"{tag} (그룹 {int(m.group(3) or 1)})"
+    return named
+
+
 def render_changes(diff: Dict[str, list], title: str, label: str, previous: Optional[dict],
                    new_basis: Optional[Dict[str, str]] = None, old_basis: Optional[Dict[str, str]] = None) -> str:
     since = f"v{previous['판']} ({previous['시각']}) 대비" if previous else "첫 판"
+    n = counts(diff)
     lines = [f"# {title} 예외사유 변경내역", "", f"- 판: {label}", f"- 비교: {since}",
-             "- 추가 {추가}건, 변경 {변경}건, 삭제 {삭제}건".format(**counts(diff))]
+             "- 추가 {추가}건, 변경 {변경}건, 삭제 {삭제}건".format(**n)
+             + (f", 그룹 이동 {n['이동']}곳" if n["이동"] else "")]
     if new_basis and new_basis.get("매뉴얼"):
         lines.append(f"- 시험 기준: {new_basis['매뉴얼']} ({NAME} ver.{new_basis.get('도구 버전', '')})")
     # 매뉴얼이 개정되어 지난 판과 기준이 다르면 알린다 (점검 결과·양식이 기준 때문에 달라졌을 수 있다)
@@ -161,9 +230,14 @@ def render_changes(diff: Dict[str, list], title: str, label: str, previous: Opti
                      "기준이 달라 생긴 차이가 섞여 있을 수 있다.")
     lines += ["",
              "| 구분 | 식별자 | 시험 종류 | 바뀐 것 |", "|---|---|---|---|"]
-    rows = ([("추가", e.get("tag", ""), e.get("test_name", ""), "") for e in diff["added"]]
-            + [("변경", c["tag"], c["test_name"], ", ".join(c["what"])) for c in diff["changed"]]
-            + [("삭제", e.get("tag", ""), e.get("test_name", ""), "") for e in diff["removed"]])
+    named = _group_namer(diff)
+    rows = ([("추가", named(e.get("tag", "")), e.get("test_name", ""), "") for e in diff["added"]]
+            + [("변경", named(c["tag"]), c["test_name"], ", ".join(c["what"])) for c in diff["changed"]]
+            + [("삭제", named(e.get("tag", "")), e.get("test_name", ""), "") for e in diff["removed"]]
+            + [("그룹 이동", f"{named(m['from'])} → {named(m['to'])}", m["test_name"],
+                f"{m['file']} {m['function']}".strip()
+                + (" (새 그룹)" if m["new"] else "") + (" (옛 그룹은 없어짐)" if m["gone"] else ""))
+               for m in diff.get("moved", [])])
     lines += [f"| {a} | {b} | {c} | {d} |" for a, b, c, d in rows] or ["| - | 바뀐 예외사유 없음 | | |"]
     lines += ["", "※ 줄 번호만 바뀐 것은 변경으로 보지 않는다(주석 식별자로 위치를 찾는다).", ""]
     return "\n".join(lines)

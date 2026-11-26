@@ -9,8 +9,12 @@
 
 # 버전: ver.X.YY (사용자 확정, ver.0.01 부터). 같은 매뉴얼 판 안의 수정은 0.01씩, 매뉴얼 판이 바뀌면 소수 첫째 자리를
 # 올린다(CHANGELOG.md). 산출물·판 이력에는 이 값이 그대로 적힌다.
-__version__ = "0.03"
+__version__ = "0.04"
 VERSION_LABEL = f"ver.{__version__}"                                 # 보이는 곳의 버전 표기
+
+# 저작권 표시 (사용자 확정, 2026-10-15). 배포본의 LICENSE(MIT) 첫머리에도 같은 값이 들어간다.
+# 정보 창은 LICENSE 를 읽고, LICENSE 가 없는 내부용 폴더에서는 이 값을 보인다.
+COPYRIGHT = "Copyright (c) 2026 minkwanchoi"
 
 NAME = "SRT-ARA"                                                     # 화면·문서·버전 표시에 쓰는 이름
 NAME_FULL = "Software Reliability Test – Analysis Report Automation"

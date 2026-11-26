@@ -59,6 +59,7 @@ class TagSite:
     clean: bool = True                  # 본문을 해석할 때 경고가 없었음
     field_spans: List[Tuple[str, int, int]] = field(default_factory=list)   # (항목, 시작, 끝)
     comment: Optional[CommentInfo] = None
+    tag_start: int = -1                 # 태그(SRT-…)가 시작하는 자리. 그룹을 옮길 때 식별자를 고친다
 
 
 @dataclass
@@ -78,15 +79,16 @@ class Block:
     base_dir: str = ""
     written: str = ""    # 소스에 쓴 그대로의 식별자. 보고서에서 소스를 다시 찾는 열쇠이다
     sites: List[TagSite] = field(default_factory=list)   # 단독 태그 1개, 또는 START/END 2개
-    ordinal: int = 0     # 같은 파일에서 같은 (유형, ID, 인덱스) 가 나온 순번
+    ordinal: int = 0     # 같은 파일에서 같은 (유형, ID, 그룹, 인덱스) 가 나온 순번
+    group: int = 1       # 같은 ID 안의 그룹 번호 (ID1.2 -> 2)
 
     @property
     def tag(self) -> str:
-        return self.written or notation.format_tag(self.test, self.ex_id, self.index)
+        return self.written or notation.format_tag(self.test, self.ex_id, self.index, self.group)
 
     @property
-    def key(self) -> Tuple[str, int, int, int]:
-        return (self.test, self.ex_id, self.index, self.ordinal)
+    def key(self) -> Tuple[str, int, int, int, int]:
+        return (self.test, self.ex_id, self.group, self.index, self.ordinal)
 
     @property
     def editable(self) -> bool:
@@ -123,13 +125,32 @@ class Occurrence:
 
 @dataclass
 class ExceptionItem:
+    """예외사유 한 건: 같은 ID·그룹의 발생 위치들. 그룹을 나누지 않았으면 ID(규칙) 하나가 한 건이다."""
     test: str
     ex_id: int
     occurrences: List[Occurrence]
+    group: int = 1
+    # 이 그룹의 대표가 쓰지 않았지만 같은 ID 의 다른 그룹에 쓴 ID 단위 항목(규칙 번호 등)
+    inherited: Dict[str, str] = field(default_factory=dict)
+    groups: List[int] = field(default_factory=lambda: [1])   # 같은 ID 의 그룹 번호들
+    home: int = 1        # ID 단위 항목을 쓴 그룹 (화면은 그 그룹에서 고치게 한다)
+
+    @property
+    def key(self) -> str:
+        """화면·판 비교에서 쓰는 열쇠. 그룹 1 은 그룹을 두기 전과 같은 "S-C:1" 이다."""
+        return f"{self.test}:{self.ex_id}" + (f".{self.group}" if self.group != 1 else "")
+
+    @property
+    def rule_key(self) -> str:
+        return f"{self.test}:{self.ex_id}"
 
     @property
     def tag(self) -> str:
         return notation.id_part(self.representative.main.tag)
+
+    @property
+    def rule_tag(self) -> str:
+        return notation.rule_part(self.representative.main.tag)
 
     @property
     def representative(self) -> Occurrence:
@@ -141,7 +162,10 @@ class ExceptionItem:
 
     @property
     def fields(self) -> Dict[str, str]:
-        return self.representative.fields
+        merged = dict(self.representative.fields)
+        for k, v in self.inherited.items():
+            merged.setdefault(k, v)
+        return merged
 
     @property
     def count(self) -> int:
@@ -263,20 +287,20 @@ def scan_text(text: str, rel: str, lang: Language, base_dir: str = "") -> Tuple[
             f = lexed.function_after(line)
         return f.signature if f else ""
 
-    counts: Dict[Tuple[str, int, int], int] = {}
+    counts: Dict[Tuple[str, int, int, int], int] = {}
 
     def make_block(hit: TagHit, tag_line: int, start: int, end: int, fields: Dict[str, str],
                    sites: List[TagSite]) -> None:
         if end < start:
             warn(tag_line, f"{hit.tag}: 끝 위치가 시작 위치보다 앞에 있습니다", "error")
             end = start
-        key = (hit.test, hit.ex_id, hit.index)
+        key = (hit.test, hit.ex_id, hit.group, hit.index)
         counts[key] = counts.get(key, 0) + 1
         blocks.append(Block(hit.test, hit.ex_id, hit.index, rel, lang.name, tag_line, start, end,
                             function_name(hit.test, start), _snippet(lexed, stripped, start, end),
-                            fields, base_dir, hit.written, sites, counts[key]))
+                            fields, base_dir, hit.written, sites, counts[key], hit.group))
 
-    open_starts: Dict[Tuple[str, int, int], List[Tuple[TagHit, int, int, Dict[str, str], TagSite]]] = {}
+    open_starts: Dict[Tuple[str, int, int, int], List[Tuple[TagHit, int, int, Dict[str, str], TagSite]]] = {}
 
     for cid, (first, parts, content) in enumerate(logical):
         last = parts[-1]
@@ -325,14 +349,15 @@ def scan_text(text: str, rel: str, lang: Language, base_dir: str = "") -> Tuple[
             site = TagSite(
                 first.kind, first.line, to_file(hit.tag_span[1]),
                 (to_file(hit.body_span[0]), to_file(hit.body_span[1])) if hit.body_span else None,
-                indent, bool(fields), first.terminated and not hit.errors, not errs, comment=info)
+                indent, bool(fields), first.terminated and not hit.errors, not errs, comment=info,
+                tag_start=to_file(hit.tag_span[0]))
             if hit.body_span:
                 inner = hit.body_span[0] + 1
                 site.field_spans = [(k, to_file(inner + a), to_file(inner + b))
                                     for k, a, b in notation.field_spans(hit.body, test)]
             before = lexed.code_before(first)
             after = lexed.code_after(last)
-            key = (hit.test, hit.ex_id, hit.index)
+            key = (hit.test, hit.ex_id, hit.group, hit.index)
             if hit.role == "END":
                 end = first.line if before else lexed.prev_code_line(first.line - 1)
                 if not open_starts.get(key):
@@ -393,17 +418,23 @@ def iter_sources(roots: Iterable[Path], excludes: Iterable[str] = ()) -> Iterabl
 
 
 def group(blocks: List[Block], diags: List[Diagnostic]) -> List[ExceptionItem]:
-    """코드 조각을 예외사유(ID) 단위로 묶는다.
+    """코드 조각을 예외사유 단위로 묶는다.
 
-    같은 ID 의 인덱스 1 이 다시 나오면 동일사항(같은 사유의 다른 위치)으로 본다.
-    본문을 가장 충실하게 쓴 위치가 대표가 된다.
+    같은 ID·그룹의 인덱스 1 이 다시 나오면 동일사항(같은 사유의 다른 위치)으로 본다.
+    본문을 가장 충실하게 쓴 위치가 대표가 된다. 그룹(ID1.2)은 같은 ID(규칙) 안에서 분석 내용이 다른 건이며,
+    ID 단위 항목(규칙 번호 등, FieldDef.per_rule)은 ID 에 한 번 쓰고 모든 그룹이 함께 쓴다.
     """
-    by_id: Dict[Tuple[str, int], List[Block]] = {}
+    by_group: Dict[Tuple[str, int, int], List[Block]] = {}
     for b in sorted(blocks, key=lambda b: (b.file, b.start_line, b.index)):
-        by_id.setdefault((b.test, b.ex_id), []).append(b)
+        by_group.setdefault((b.test, b.ex_id, b.group), []).append(b)
+
+    pending: List[Diagnostic] = []
+
+    def note(level: str, block: Block, message: str, item_key: str) -> None:
+        pending.append(Diagnostic(level, block.file, block.tag_line, message, block.comment, [], item_key))
 
     items: List[ExceptionItem] = []
-    for (test, ex_id), group_blocks in by_id.items():
+    for (test, ex_id, grp), group_blocks in by_group.items():
         ttype = TEST_TYPES[test]
         occurrences: List[Occurrence] = []
         orphans: List[Block] = []
@@ -414,15 +445,12 @@ def group(blocks: List[Block], diags: List[Diagnostic]) -> List[ExceptionItem]:
                 occurrences[-1].refs.append(b)
             else:
                 orphans.append(b)
-        item_key = f"{test}:{ex_id}"
+        item = ExceptionItem(test, ex_id, occurrences, grp)
 
-        def note(level: str, block: Block, message: str, item_key: str = item_key) -> None:
-            diags.append(Diagnostic(level, block.file, block.tag_line, message, block.comment, [], item_key))
-
-        tag = notation.format_tag(test, ex_id)
+        tag = notation.format_tag(test, ex_id, group=grp)
         if not occurrences:
             first = orphans.pop(0)
-            note("error", first, f"{tag}: 인덱스 1 이 없습니다 ({first.tag} 를 발생 위치로 처리)")
+            note("error", first, f"{tag}: 인덱스 1 이 없습니다 ({first.tag} 를 발생 위치로 처리)", item.key)
             occurrences.append(Occurrence(first))
 
         shared = {f.key for f in ttype.fields if not f.per_occurrence}
@@ -433,45 +461,137 @@ def group(blocks: List[Block], diags: List[Diagnostic]) -> List[ExceptionItem]:
         rep = max(occurrences, key=weight)   # 동률이면 먼저 나온 위치
         rep.refs.extend(orphans)
         tag = notation.id_part(rep.main.tag)
-        spellings = sorted({notation.id_part(b.tag) for b in group_blocks})
-        if len(spellings) > 1:
-            note("warning", rep.main, f"{tag}: 같은 ID 를 서로 다르게 썼습니다: {', '.join(spellings)}")
+        # ID 번호를 다르게 쓴 것(ID01, ID1)은 아래 ID 단위 점검에서 본다. 여기서는 그룹 표기(ID1, ID1.1)만 본다
+        suffixes = {notation.id_part(b.tag)[len(notation.rule_part(b.tag)):] for b in group_blocks}
+        if len(suffixes) > 1:
+            spellings = sorted({notation.id_part(b.tag) for b in group_blocks})
+            note("warning", rep.main, f"{tag}: 같은 그룹을 서로 다르게 썼습니다: {', '.join(spellings)}", item.key)
         occurrences.remove(rep)
         occurrences.insert(0, rep)
 
         rep_fields = rep.fields
         if weight(rep) == 0:
-            note("error", rep.main, f"{tag}: 예외사유 내용이 없습니다")
+            note("error", rep.main, f"{tag}: 예외사유 내용이 없습니다", item.key)
         for f in ttype.fields:
-            if f.key == "FA내용" and criteria.derived_content(test, rep_fields):
-                continue                # 규칙명·취약점명은 번호에서 찾을 수 있으면 쓰지 않아도 된다
-            if weight(rep) and f.required and not f.per_occurrence and f.key not in rep_fields:
-                note("warning", rep.main, f"{tag}: @{f.key} 항목이 없습니다")
-        if weight(rep):                 # 시험 기준(criteria.py)에 맞는 값인지
-            standard = rep_fields.get("기준", "") if test == "S-C" else ""
-            if standard and criteria.coding_standard(standard) is None:
-                names = ", ".join(criteria.coding_standards_for(rep.main.language)
-                                  or [n for n, _l in criteria.CODING_STANDARDS])
-                note("warning", rep.main, f"{tag}: 시험 기준에 없는 코딩 규칙 기준입니다: {standard} (기준: {names})")
-            level = rep_fields.get("커버리지", "") if test == "D" else ""
-            if level and criteria.coverage(level) is None:
-                note("warning", rep.main, f"{tag}: 코드 실행률 기준은 문장, 분기, MC/DC 중 하나입니다: {level}")
-            if test == "S-W" and criteria.cwe_id(rep_fields.get("취약점", "") + " " + rep_fields.get("Ref", "")) is None:
-                note("warning", rep.main, f"{tag}: @취약점 또는 @Ref 에 CWE 번호(CWE-###)가 없습니다")
+            if weight(rep) and f.required and not f.per_occurrence and not f.per_rule and f.key not in rep_fields:
+                note("warning", rep.main, f"{tag}: @{f.key} 항목이 없습니다", item.key)
         for o in occurrences:
             for f in ttype.fields:
                 if f.required and f.per_occurrence and f.key not in o.fields:
-                    note("warning", o.main, f"{o.main.tag}: @{f.key} 항목이 없습니다")
-        for o in occurrences[1:]:
-            clash = [k for k, v in o.fields.items() if k in shared and rep_fields.get(k) != v]
+                    note("warning", o.main, f"{o.main.tag}: @{f.key} 항목이 없습니다", item.key)
+        # 참조 코드(ID1-2)에 분석 글을 적었으면 그룹(ID1.2-1)을 뜻했을 수 있다: 한 글자 차이라 도구가 알려 준다.
+        # 참조 코드에는 보통 분석을 적지 않는다(사유는 결함 위치에 쓴다)
+        analysis = notation.analysis_keys(ttype)
+        for o in occurrences:
+            for r in o.refs:
+                written = [k for k in analysis if k in r.fields]
+                if r.group != 1 or not written:
+                    continue
+                meant = notation.rule_part(r.tag) + f".{r.index}-1"
+                one_tag = len(r.sites) == 1
+                pending.append(Diagnostic(
+                    "warning", r.file, r.tag_line,
+                    f"{r.tag}: 참조 코드(인덱스 {r.index})에 분석 글({', '.join('@' + k for k in written)})이 있습니다. "
+                    f"그룹 {r.index}의 결함 위치라면 {meant} 로 쓰십시오"
+                    + ("" if one_tag else "(START·END 두 곳 모두)"),
+                    r.comment, [(r.tag, meant)] if one_tag else [], item.key))
+        items.append(item)
+
+    by_rule: Dict[Tuple[str, int], List[ExceptionItem]] = {}
+    for item in sorted(items, key=lambda i: i.group):
+        by_rule.setdefault((item.test, item.ex_id), []).append(item)
+    for (test, ex_id), members in by_rule.items():
+        _rule_checks(test, members, note)
+
+    # 같은 그룹 안에서 대표와 다르게 쓴 내용. 분석 항목이 다르면 그룹을 나누라고 알린다(화면은 나누기를 제안한다)
+    for item in items:
+        rep = item.representative
+        fields = item.fields
+        shared = {f.key for f in TEST_TYPES[item.test].fields if not f.per_occurrence}
+        for o in item.same:
+            clash = [k for k, v in o.fields.items() if k in shared and fields.get(k) != v]
             if clash:
-                note("warning", o.main, f"{tag}: 대표 위치({rep.main.file}:{rep.main.tag_line})와 "
-                                        f"내용이 다릅니다: {', '.join('@' + k for k in clash)}")
-        items.append(ExceptionItem(test, ex_id, occurrences))
+                analysis = [k for k in clash if not TEST_TYPES[item.test].field(k).per_rule]
+                hint = ""
+                if analysis:            # 거의 같은 글이면 지우라고, 다른 분석이면 그룹을 나누라고 알린다
+                    near = min(notation.similarity(o.fields[k], fields.get(k, "")) for k in analysis)
+                    hint = (" (거의 같은 글이면 이 위치의 글을 지워 대표의 글을 쓰게 하십시오)" if near >= notation.SAME
+                            else " (같은 분석을 달리 쓴 것이면 이 위치의 글을 지우고, 분석이 다르면 그룹을 나누십시오)"
+                            if near >= notation.KEEP else " (분석이 다르면 그룹을 나누십시오)")
+                note("warning", o.main, f"{item.tag}: 대표 위치({rep.main.file}:{rep.main.tag_line})와 "
+                                        f"내용이 다릅니다: {', '.join('@' + k for k in clash)}{hint}", item.key)
+
+    # 그룹을 나눈 ID 의 메시지는 앞머리 식별자 뒤에 "(그룹 N)" 을 붙인다(61단계: 헷갈리는 식별자는 괄호로 뜻을 밝힌다).
+    # 화면은 메시지 앞머리 "식별자 + 빈칸" 으로 예외사유를 찾으므로 이 모양이어야 한다
+    grouped = {(i.test, i.ex_id) for i in items if len(i.groups) > 1}
+    for d in pending:
+        d.message = _label_group(d.message, grouped)
+    diags.extend(pending)
 
     order = list(TEST_TYPES)
-    items.sort(key=lambda i: (order.index(i.test), i.ex_id))
+    items.sort(key=lambda i: (order.index(i.test), i.ex_id, i.group))
     return items
+
+
+def _label_group(message: str, grouped: set) -> str:
+    m = notation.TAG_RE.match(message)
+    if not m or (m.group(1), int(m.group(2))) not in grouped:
+        return message
+    return f"{m.group(0)} (그룹 {int(m.group(3) or 1)})" + message[m.end():]
+
+
+def _rule_checks(test: str, members: List[ExceptionItem], note: Callable[..., None]) -> None:
+    """같은 ID 의 그룹들(members, 그룹 번호 순)에 ID 단위 항목을 나눠 주고 ID 단위로 점검한다."""
+    ttype = TEST_TYPES[test]
+    per_rule = [f for f in ttype.fields if f.per_rule]
+    # ID 단위 항목을 가장 많이 쓴 그룹이 기준(home)이다 (같으면 앞 번호). 그 그룹에 없는 항목은 다른 그룹에서 가져온다
+    home = max(members, key=lambda i: sum(1 for f in per_rule if f.key in i.representative.fields))
+    values: Dict[str, str] = {}
+    for item in [home] + [m for m in members if m is not home]:
+        for f in per_rule:
+            v = item.representative.fields.get(f.key)
+            if v and f.key not in values:
+                values[f.key] = v
+    groups = [m.group for m in members]
+    for item in members:
+        item.home = home.group
+        item.groups = groups
+        item.inherited = {k: v for k, v in values.items() if k not in item.representative.fields}
+        if item is home:
+            continue
+        differ = [f.key for f in per_rule
+                  if item.representative.fields.get(f.key) not in (None, values.get(f.key))]
+        if differ:
+            note("warning", item.representative.main,
+                 f"{item.tag}: ID 단위 항목이 {home.tag} 와 다릅니다: {', '.join('@' + k for k in differ)} "
+                 "(규칙이 다르면 다른 ID 로 쓰십시오)", item.key)
+
+    rep = home.representative
+    tag = home.tag
+    spellings = sorted({notation.rule_part(o.main.tag) for m in members for o in m.occurrences}
+                       | {notation.rule_part(r.tag) for m in members for o in m.occurrences for r in o.refs})
+    if len(spellings) > 1:
+        note("warning", rep.main, f"{tag}: 같은 ID 를 서로 다르게 썼습니다: {', '.join(spellings)}", home.key)
+    fields = home.fields
+    if not any(m.representative.fields for m in members):
+        return                          # 내용이 없다는 오류는 그룹마다 이미 냈다
+    for f in per_rule:
+        if f.key == "FA내용" and criteria.derived_content(test, fields):
+            continue                    # 규칙명·취약점명은 번호에서 찾을 수 있으면 쓰지 않아도 된다
+        if f.required and f.key not in fields:
+            note("warning", rep.main, f"{tag}: @{f.key} 항목이 없습니다", home.key)
+    # 시험 기준(criteria.py)에 맞는 값인지
+    standard = fields.get("기준", "") if test == "S-C" else ""
+    if standard and criteria.coding_standard(standard) is None:
+        names = ", ".join(criteria.coding_standards_for(rep.main.language)
+                          or [n for n, _l in criteria.CODING_STANDARDS])
+        note("warning", rep.main, f"{tag}: 시험 기준에 없는 코딩 규칙 기준입니다: {standard} (기준: {names})", home.key)
+    level = fields.get("커버리지", "") if test == "D" else ""
+    if level and criteria.coverage(level) is None:
+        note("warning", rep.main, f"{tag}: 코드 실행률 기준은 문장, 분기, MC/DC 중 하나입니다: {level}", home.key)
+    refs = " ".join(m.fields.get("Ref", "") for m in members)
+    if test == "S-W" and criteria.cwe_id(fields.get("취약점", "") + " " + refs) is None:
+        note("warning", rep.main, f"{tag}: @취약점 또는 @Ref 에 CWE 번호(CWE-###)가 없습니다", home.key)
 
 
 def scan(roots: Iterable[Path], excludes: Iterable[str] = (), encoding: Optional[str] = None,

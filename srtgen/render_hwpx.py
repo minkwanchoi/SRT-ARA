@@ -268,11 +268,15 @@ class _Writer:
             out.append(self.para(line, PA_TITLE, CH_TITLE, lead=lead if i == 0 else ""))
             self.preview.append(line)
         for n, sec in enumerate(report.sections):
+            # 쪽은 예외사유마다 나눈다. 그룹을 나눈 ID 의 제목(표 없음) 바로 뒤의 첫 그룹은 같은 쪽에 둔다
+            after_head = n > 0 and report.sections[n - 1].table is None
             out.append(self.para(sec.heading, PA_HEADING, CH_HEADING,
-                                 page_break=(n > 0 and not self.compact)))
+                                 page_break=(n > 0 and not after_head and not self.compact)))
+            self.preview.append(sec.heading)
+            if sec.table is None:
+                continue
             out.append(self.object_para(self.table(sec.table), PA_BODY))
             out += [self.para(note, PA_BODY, CH_NOTE) for note in report.notes]
-            self.preview.append(sec.heading)
         out.append("</hs:sec>")
         return "".join(out)
 

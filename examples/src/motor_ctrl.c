@@ -9,6 +9,8 @@
 #define MOTOR_REG_BASE   (0x40021000u)   /*SRT-S-C-ID2-2*/
 #define MOTOR_ERR_TIME   (-1)
 #define MOTOR_ERR_PARAM  (-2)
+#define MOTOR_SPEED_LIMIT_ON  (1u)       /* 빌드 구성: 속도 제한 사용 여부 */
+#define MOTOR_SPEED_MAX       (3000u)
 
 static uint32_t read_status(void)
 {
@@ -66,6 +68,7 @@ int32_t motor_log_time(time_t *out)
         @결론{본 내용은 OS사에서 제공하는 함수를 사용하였으며, 해당 리턴값을 준수하였으므로 기능이
               정상적으로 동작하는 것을 unit test 및 integration test에서 확인하였음.
               SW신뢰성 및 기능에 문제가 없음.}
+        @첨부{srt_attach/SRT-S-C-ID1_diagram1.png|순서도}
     }*/
     *out = now;
     return 0;
@@ -78,6 +81,25 @@ int32_t motor_periodic_check(void)
         return MOTOR_ERR_TIME;
     }
     return (int32_t)(read_status() & 0xFFu);
+}
+
+/* 같은 규칙(Rule 14.3)이지만 분석 내용이 다르므로 같은 ID 의 그룹 2(ID1.2)로 쓴다.
+ * 기준·규칙·FA내용은 ID1 에 쓴 것을 함께 쓴다. */
+uint32_t motor_limit_speed(uint32_t speed)
+{
+    uint32_t out = speed;
+    if (MOTOR_SPEED_LIMIT_ON == 1u) {       /*SRT-S-C-ID1.2-1START*/
+        out = (speed > MOTOR_SPEED_MAX) ? MOTOR_SPEED_MAX : speed;
+    }                                       /*SRT-S-C-ID1.2-1END{
+        @설명{빌드 구성 상수(MOTOR_SPEED_LIMIT_ON)에 따라 속도 제한 여부를 정하는 조건문에서 Alarm 이
+              발생함.}
+        @FA분석{빌드 구성마다 상수 값이 달라지는 구성 분기로, 이 구성에서는 조건 값이 늘 같아 시험도구가
+                검출한 내용임. 조건부 컴파일로 바꾸면 구성별로 코드가 나뉘어 검증할 범위가 늘어남.}
+        @결론{속도 제한을 쓰는 구성과 쓰지 않는 구성을 각각 빌드하여 integration test 에서 두 경로를
+              확인하였음. SW신뢰성 및 기능에 문제가 없음.}
+        @첨부{srt_attach/SRT-S-C-ID1.2_diagram1.png|상태전이도}
+    }*/
+    return out;
 }
 
 /*SRT-S-M-ID1-1{

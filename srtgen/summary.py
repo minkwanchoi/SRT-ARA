@@ -25,7 +25,7 @@ def write_json(result: ScanResult, out_dir: Path) -> Path:
         "files_scanned": result.files_scanned,
         "exceptions": [{
             "tag": item.tag, "test": item.test, "test_name": TEST_TYPES[item.test].name,
-            "id": item.ex_id, "count": item.count, "fields": item.fields,
+            "id": item.ex_id, "group": item.group, "count": item.count, "fields": item.fields,
             "occurrences": [{
                 **_block(occ.main), "fields": occ.fields, "references": [_block(r) for r in occ.refs],
             } for occ in item.occurrences],
@@ -84,17 +84,19 @@ def write_summary(result: ScanResult, out_dir: Path, title: str, projects: Seque
     for code, ttype in TEST_TYPES.items():
         counts: dict = {}
         for item in result.by_test(code):
-            counts[_criterion(item)] = counts.get(_criterion(item), 0) + 1
+            if item.group == item.groups[0]:        # 그룹을 나눈 ID 도 한 번만 센다
+                counts[_criterion(item)] = counts.get(_criterion(item), 0) + 1
         lines += [f"| {ttype.title} | {_cell(name)} | {n} |" for name, n in counts.items()]
         if not counts:
             lines.append(f"| {ttype.title} | - | 0 |")
     lines.append("")
-    lines += ["## 시험 유형별 건수", "", "| 시험 유형 | 주석 모양 | 예외사유(ID) 수 | 발생 위치 수 | 보고서 |",
-              "|---|---|---:|---:|---|"]
+    lines += ["## 시험 유형별 건수", "",
+              "| 시험 유형 | 주석 모양 | 예외사유(ID) 수 | 분석 그룹 수 | 발생 위치 수 | 보고서 |",
+              "|---|---|---:|---:|---:|---|"]
     for code, ttype in TEST_TYPES.items():
         items = result.by_test(code)
         report = f"[{ttype.report}]({ttype.filename}.md)" if items else "-"
-        lines.append(f"| {ttype.name} | `SRT-{code}-ID##` | {len(items)} | "
+        lines.append(f"| {ttype.name} | `SRT-{code}-ID##` | {len({i.ex_id for i in items})} | {len(items)} | "
                      f"{sum(i.count for i in items)} | {report} |")
     lines += ["", "## 예외사유 목록", "", "| 식별자 | 시험 유형 | 항목 | 대표 위치 | 함수 | 개수 |",
               "|---|---|---|---|---|---:|"]
@@ -103,7 +105,8 @@ def write_summary(result: ScanResult, out_dir: Path, title: str, projects: Seque
         subject = item.fields.get(_SUBJECT[item.test], "")
         if len(subject) > 40:
             subject = subject[:40] + "…"
-        lines.append(f"| `{item.tag}` | {TEST_TYPES[item.test].name} | {_cell(subject)} | "
+        note = f" (그룹 {item.group})" if len(item.groups) > 1 else ""   # 그룹을 나눈 ID 는 괄호로 밝힌다
+        lines.append(f"| `{item.tag}`{note} | {TEST_TYPES[item.test].name} | {_cell(subject)} | "
                      f"{rep.file}:{rep.lines} | {_cell(rep.function)} | {item.count} |")
     lines += ["", "## 점검 결과", ""]
     if result.diagnostics:

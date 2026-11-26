@@ -34,8 +34,9 @@ from .notation import TEST_TYPES
 from .progress import Listener, Progress
 from .project import Node, ProjectError, Workspace, detect_projects, open_paths, project_kind, project_rank
 from .scanner import Block, Diagnostic, ScanResult, scan_entries
-from .writeback import (ATTACH_DIR, ATTACH_TYPES, Conflict, FieldEdit, WritebackError, apply_edits,
+from .writeback import (ATTACH_DIR, ATTACH_TYPES, Conflict, FieldEdit, WritebackError, apply_edits, move_group,
                         replace_comment, save_attachment)
+from . import grouping
 
 def ask_directory(initial: str, title: str) -> str:
     """이 PC 의 폴더 선택 창(윈도우 탐색기 모양)을 띄워 고른 폴더를 돌려준다. 취소하면 빈 글.
@@ -69,7 +70,7 @@ def open_in_explorer(path: Path) -> None:
 WEB_DIR = Path(__file__).parent / "web"
 # 화면(web/index.html 의 API_LEVEL)과 맞춰 올리는 번호. 화면은 요청마다 새로 읽지만 서버는 다시 띄워야 바뀌므로,
 # 예전 서버가 남아 있으면 화면이 이 번호로 알아채고 "다시 실행하십시오"를 보인다. 상태의 모양을 바꾸면 둘 다 올린다.
-API_LEVEL = 10
+API_LEVEL = 11
 # 소스에 반영·주석 고치기 뒤에 프로젝트 전체를 다시 읽을 때 진행 창에 보이는 단계 이름
 AFTER_SAVE = "반영 뒤 소스 다시 읽는 중"
 RULES_FILE = Path.home() / ".srtgen" / "rules.json"      # 사용자가 넣는 규칙 목록의 기본 위치
@@ -217,9 +218,15 @@ class App:
     # ---- 화면에 보낼 상태 ----
     def _block(self, b: Block) -> dict:
         return {"file": b.file, "sha": self.result.hashes.get(b.file, ""), "tag": b.tag, "test": b.test,
-                "id": b.ex_id, "index": b.index, "ordinal": b.ordinal, "lines": b.lines,
+                "id": b.ex_id, "group": b.group, "index": b.index, "ordinal": b.ordinal, "lines": b.lines,
                 "tag_line": b.tag_line, "function": b.function, "language": b.language,
                 "code": [[n, t] for n, t in b.code], "fields": b.fields, "editable": b.editable}
+
+    def _place(self, occ) -> dict:
+        """발생 위치 하나와 그 참조 코드. 그룹을 옮길 때 화면이 그대로 돌려보낸다(/api/regroup)."""
+        b = occ.main
+        return {"file": b.file, "sha": self.result.hashes.get(b.file, ""), "lines": b.lines, "tag": b.tag,
+                "blocks": [list(x.key) for x in [b] + occ.refs if x.file == b.file]}
 
     def state(self) -> dict:
         r = self.result
@@ -252,14 +259,23 @@ class App:
             "files_scanned": r.files_scanned, "files_with_tags": r.files_with_tags,
             "types": [{"code": t.code, "name": t.name, "title": t.title, "report": t.report,
                        "fields": [{"key": f.key, "required": f.required, "per_occurrence": f.per_occurrence,
+                                   "per_rule": f.per_rule,
                                    "help": f.help, "choices": list(f.choices)} for f in t.fields]}
                       for t in TEST_TYPES.values()],
-            "items": [{"key": f"{i.test}:{i.ex_id}", "tag": i.tag, "test": i.test, "id": i.ex_id,
+            "items": [{"key": i.key, "tag": i.tag, "test": i.test, "id": i.ex_id,
+                       # 같은 ID(규칙) 안의 그룹: 번호, 같은 ID 의 그룹들, ID 단위 항목을 쓴 그룹, 다른 그룹에서 받은 항목
+                       "group": i.group, "groups": i.groups, "home": i.home, "rule_key": i.rule_key,
+                       "rule_tag": i.rule_tag, "inherited": sorted(i.inherited),
                        "count": i.count, "fields": i.fields,
                        "derived": {"FA내용": criteria.derived_content(i.test, i.fields)},
                        "occurrences": [{"main": self._block(o.main), "fields": o.fields,
                                         "refs": [self._block(x) for x in o.refs]} for o in i.occurrences]}
                       for i in r.items],
+            # 그룹 나누기·옮기기·합치기 제안 (받아들이면 /api/regroup)
+            "suggestions": [{"kind": s.kind, "item": s.item.key, "rule_key": s.item.rule_key, "to": s.to,
+                             "new": s.new, "similarity": round(s.similarity, 2), "reason": s.reason,
+                             "places": [self._place(o) for o in s.occurrences]}
+                            for s in grouping.suggest(r.items)],
             "mermaid": (WEB_DIR / "vendor" / "mermaid.min.js").is_file(),
             # 코딩 규칙 기준별 규칙 번호 -> 규칙명 (화면에서 번호를 고르면 규칙명을 채운다)
             "rule_titles": self.rule_titles(),
@@ -446,7 +462,8 @@ class App:
             fields = e.get("fields")
             if not isinstance(fields, dict) or not all(isinstance(v, str) for v in fields.values()):
                 raise WritebackError("잘못된 요청입니다.")
-            edit = FieldEdit(str(e["test"]), int(e["id"]), int(e["index"]), int(e["ordinal"]), fields)
+            edit = FieldEdit(str(e["test"]), int(e["id"]), int(e["index"]), int(e["ordinal"]), fields,
+                             int(e.get("group", 1)))
             by_file.setdefault(str(e["file"]), (str(e.get("sha", "")), []))[1].append(edit)
         if not by_file:
             raise WritebackError("반영할 내용이 없습니다.")
@@ -461,6 +478,40 @@ class App:
                 for rel, (sha, edits) in by_file.items():
                     self.progress.update(len(done), len(by_file), rel)
                     apply_edits(self.result.paths[rel], rel, language_for(rel), edits, sha)
+                    done.append(rel)
+            finally:
+                try:
+                    self.rescan(AFTER_SAVE)
+                finally:
+                    self.progress.finish()
+        return {"saved": done, "state": self.state()}
+
+    # ---- 그룹 나누기·옮기기 ----
+    def regroup(self, payload: dict) -> dict:
+        """발생 위치들(places: 파일, 해시, 블록 key 목록)을 같은 ID 의 그룹 to 로 옮긴다. 주석의 식별자만 고친다."""
+        to = int(payload["to"])
+        clear = bool(payload.get("clear"))     # 옮긴 위치의 분석 글을 지운다 (합치기·옮기기 제안에서)
+        by_file: Dict[str, Tuple[str, List[tuple]]] = {}
+        rules = set()
+        for place in payload.get("places", []):
+            keys = [(str(k[0]), int(k[1]), int(k[2]), int(k[3]), int(k[4])) for k in place["blocks"]]
+            if not keys:
+                raise WritebackError("잘못된 요청입니다.")
+            rules |= {(k[0], k[1]) for k in keys}
+            by_file.setdefault(str(place["file"]), (str(place.get("sha", "")), []))[1].extend(keys)
+        if not by_file:
+            raise WritebackError("옮길 위치가 없습니다.")
+        if len(rules) != 1:
+            raise WritebackError("그룹은 같은 ID 안에서만 옮길 수 있습니다.")
+        with self.lock:
+            for rel, (sha, _keys) in by_file.items():
+                self._source(rel, sha)
+            done: List[str] = []
+            self.progress.start("그룹을 옮기는 중")
+            try:
+                for rel, (sha, keys) in by_file.items():
+                    self.progress.update(len(done), len(by_file), rel)
+                    move_group(self.result.paths[rel], rel, language_for(rel), keys, to, sha, clear)
                     done.append(rel)
             finally:
                 try:
@@ -610,7 +661,7 @@ class App:
     def preview(self, key: str) -> str:
         """예외사유 하나를 양식 모양의 HTML 로 돌려준다 (소스에 저장된 내용 기준)."""
         with self.lock:
-            item = next((i for i in self.result.items if f"{i.test}:{i.ex_id}" == key), None)
+            item = next((i for i in self.result.items if i.key == key), None)
             if item is None:
                 return "<p>예외사유를 찾을 수 없습니다.</p>"
             # 그림은 미리보기 전용 임시 폴더에 복사한다(출력 폴더에 쓰지 않는다). 화면은 /images/ 로 받는다.
@@ -739,6 +790,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, self.app.remove_project(payload))
             if self.path == "/api/fix":
                 return self._json(200, self.app.fix(payload))
+            if self.path == "/api/regroup":
+                return self._json(200, self.app.regroup(payload))
             if self.path == "/api/attach":
                 return self._json(200, self.app.attach(payload))
             if self.path == "/api/open":
